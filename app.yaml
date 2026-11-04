@@ -1,0 +1,32 @@
+id: itsm
+name: IT Services
+version: 0.1.0
+publisher: cbferrum
+summary: "Configuration items and their dependencies, a service catalog, incidents by priority with their targets, problems, and changes with approval, conflicts, freezes and impact"
+description: README.md
+categories: [support, productivity]
+license: AGPL-3.0-only
+homepage: https://github.com/CBFerrum/ferrum-app-itsm
+support: https://github.com/CBFerrum/ferrum-app-itsm/issues
+runtime: native
+platform: ">=0.3.2, <0.4"
+packages: [itsm]
+uninstall: ask
+# Its own interface at /itsm/: open incidents by priority, and changes coming up.
+ui:
+  dist: ui/dist
+contributes:
+  shell.app:
+    - id: itsm
+      route: itsm
+      title: IT Services
+      description: Incidents, requests, problems, changes and configuration items
+      icon: headset
+      color: "#0369a1"
+      roles: [Service Desk, Change Manager, Configuration Manager, Requester]
+  shell.open:
+    - {id: itsm, package: itsm, path: "itsm/e/{entity}/{id}", list: "itsm/e/{entity}"}
+  shell.create:
+    - {id: incident, label: Incident, path: itsm/e/Incident/new, entity: Incident}
+    - {id: request, label: Catalog Request, path: itsm/e/CatalogRequest/new, entity: CatalogRequest}
+    - {id: change, label: Change, path: itsm/e/ItChange/new, entity: ItChange}

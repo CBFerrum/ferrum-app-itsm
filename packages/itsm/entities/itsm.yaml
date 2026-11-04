@@ -1,0 +1,152 @@
+- name: CiRelation
+  label: Relation
+  kind: child
+  fields:
+    - {name: kind, type: select, options: [Depends On, Runs On, Connects To], default: Depends On, required: true, in_list: true}
+    - {name: target, type: link, to: ConfigurationItem, required: true, in_list: true}
+
+- name: ConfigurationItem
+  label: Configuration Item
+  label_plural: Configuration Items
+  kind: master
+  module: itsm
+  title_field: ci_name
+  description: Something IT runs, and what it depends on or runs on. Nothing depends on itself, however far round.
+  fields:
+    - {name: ci_name, type: data, required: true, unique: true, in_list: true, label: Name}
+    - {name: ci_type, type: select, options: [Business Service, Application, Server, Database, Network Device, Laptop, Other], default: Application, in_list: true, in_filter: true, label: Type}
+    - {name: status, type: select, options: [Planned, Live, Retired], default: Live, in_list: true, in_filter: true}
+    - {name: environment, type: select, options: [Production, Staging, Test, Development], default: Production, in_list: true, in_filter: true}
+    - {name: criticality, type: select, options: [Low, Medium, High, Critical], default: Medium, in_list: true, in_filter: true}
+    - {name: owner, type: email, in_list: true}
+    - {name: serial_number, type: data}
+    - {name: location, type: data}
+    - {name: relations, type: table, of: CiRelation}
+    - {name: notes, type: text}
+  list: {columns: [ci_name, ci_type, status, environment, criticality, owner], sort: ci_name asc}
+
+- name: ServiceOffering
+  label: Service Offering
+  label_plural: Service Catalog
+  kind: master
+  module: itsm
+  title_field: offering_name
+  description: Something people may ask IT for, with how long it takes and whether it needs approval.
+  fields:
+    - {name: offering_name, type: data, required: true, unique: true, in_list: true}
+    - {name: description, type: text}
+    - {name: service, type: link, to: ConfigurationItem, in_list: true}
+    - {name: needs_approval, type: check, in_list: true}
+    - {name: fulfil_hours, type: int, required: true, default: 24, in_list: true, label: Hours to Fulfil}
+    - {name: active, type: check, default: true, in_list: true, in_filter: true}
+  list: {columns: [offering_name, service, needs_approval, fulfil_hours, active], sort: offering_name asc}
+
+- name: CatalogRequest
+  label: Catalog Request
+  label_plural: Catalog Requests
+  kind: master
+  module: itsm
+  title_field: offering
+  description: Someone asking for something in the catalog; approved first when the offering needs it, by someone other than who asked.
+  fields:
+    - {name: offering, type: link, to: ServiceOffering, required: true, in_list: true, in_filter: true}
+    - {name: requested_by, type: email, read_only: true, no_copy: true, in_list: true}
+    - {name: details, type: text}
+    - {name: status, type: select, options: [Submitted, Approved, Rejected, Fulfilled, Cancelled], default: Submitted, read_only: true, no_copy: true, in_list: true, in_filter: true}
+    - {name: due_at, type: datetime, read_only: true, no_copy: true, in_list: true}
+    - {name: decided_by, type: email, read_only: true, no_copy: true}
+    - {name: decision_note, type: text, read_only: true, no_copy: true}
+    - {name: fulfilled_at, type: datetime, read_only: true, no_copy: true}
+  actions:
+    - {name: approve_request, label: Approve It, permission: write, condition: "doc.status == 'Submitted'"}
+    - {name: reject_request, label: Reject It, permission: write, condition: "doc.status == 'Submitted'", params: [{name: note, type: text, label: Why, required: true}]}
+    - {name: fulfil, label: Fulfil It, permission: write, condition: "doc.status == 'Submitted' || doc.status == 'Approved'"}
+    - {name: cancel_request, label: Cancel It, permission: write, condition: "doc.status == 'Submitted' || doc.status == 'Approved'"}
+  numbering: {template: "REQ-{YYYY}-{seq:5}"}
+  list: {columns: [number, offering, requested_by, status, due_at], sort: created_at desc}
+
+- name: Incident
+  label: Incident
+  label_plural: Incidents
+  kind: master
+  module: itsm
+  title_field: title
+  description: Something broken. Its impact and urgency give its priority, and the priority its targets.
+  fields:
+    - {name: title, type: data, required: true, in_list: true}
+    - {name: description, type: text}
+    - {name: ci, type: link, to: ConfigurationItem, in_list: true, in_filter: true, label: Affected Item}
+    - {name: impact, type: select, options: [High, Medium, Low], default: Medium, required: true, in_list: true}
+    - {name: urgency, type: select, options: [High, Medium, Low], default: Medium, required: true, in_list: true}
+    - {name: priority, type: select, options: [P1, P2, P3, P4], read_only: true, in_list: true, in_filter: true}
+    - {name: major, type: check, read_only: true, in_filter: true, description: "P1 on a critical item"}
+    - {name: status, type: select, options: [New, In Progress, On Hold, Resolved, Closed], default: New, in_list: true, in_filter: true}
+    - {name: assigned_to, type: email, in_list: true, in_filter: true}
+    - {name: problem, type: link, to: Problem}
+    - {name: opened_at, type: datetime, read_only: true, no_copy: true}
+    - {name: resolve_by, type: datetime, read_only: true, no_copy: true, in_list: true}
+    - {name: resolution, type: text}
+    - {name: resolved_at, type: datetime, read_only: true, no_copy: true}
+    - {name: breached, type: check, read_only: true, no_copy: true, in_list: true, in_filter: true}
+  numbering: {template: "INC-{YYYY}-{seq:5}"}
+  list: {columns: [number, title, priority, status, assigned_to, resolve_by, breached], sort: created_at desc}
+
+- name: Problem
+  label: Problem
+  label_plural: Problems
+  kind: master
+  module: itsm
+  title_field: title
+  description: The cause behind incidents. A known error has its workaround; resolved, it says its root cause and resolves the incidents still open under it.
+  fields:
+    - {name: title, type: data, required: true, in_list: true}
+    - {name: ci, type: link, to: ConfigurationItem, in_list: true}
+    - {name: description, type: text}
+    - {name: status, type: select, options: [Open, Known Error, Resolved, Closed], default: Open, in_list: true, in_filter: true}
+    - {name: workaround, type: text}
+    - {name: root_cause, type: text}
+  numbering: {template: "PRB-{YYYY}-{seq:5}"}
+  list: {columns: [number, title, ci, status], sort: created_at desc}
+
+- name: ItChange
+  label: Change
+  label_plural: Changes
+  kind: master
+  module: itsm
+  title_field: title
+  description: A change to something IT runs. Normal changes are approved by a change manager who did not raise them, and are kept out of freezes; no two approved changes touch one item at once.
+  fields:
+    - {name: title, type: data, required: true, in_list: true}
+    - {name: ci, type: link, to: ConfigurationItem, required: true, in_list: true, in_filter: true, label: Item Changed}
+    - {name: kind, type: select, options: [Standard, Normal, Emergency], default: Normal, required: true, in_list: true, in_filter: true}
+    - {name: risk, type: select, options: [Low, Medium, High], default: Medium, in_list: true}
+    - {name: planned_start, type: datetime, required: true, in_list: true}
+    - {name: planned_end, type: datetime, required: true}
+    - {name: backout_plan, type: text}
+    - {name: impacted, type: text, read_only: true, description: "The items that depend on or run on it, however far round"}
+    - {name: status, type: select, options: [Draft, Submitted, Approved, Implemented, Closed, Rejected, Failed], default: Draft, read_only: true, no_copy: true, in_list: true, in_filter: true}
+    - {name: decided_by, type: email, read_only: true, no_copy: true}
+    - {name: decision_note, type: text, read_only: true, no_copy: true}
+    - {name: implemented_at, type: datetime, read_only: true, no_copy: true}
+  actions:
+    - {name: submit_change, label: Submit It, permission: write, condition: "doc.status == 'Draft'"}
+    - {name: approve_change, label: Approve It, permission: write, condition: "doc.status == 'Submitted'"}
+    - {name: reject_change, label: Reject It, permission: write, condition: "doc.status == 'Submitted'", params: [{name: note, type: text, label: Why, required: true}]}
+    - {name: implement, label: Done, permission: write, condition: "doc.status == 'Approved'"}
+    - {name: close_change, label: Close It, permission: write, condition: "doc.status == 'Implemented'", params: [{name: note, type: text, label: Review}]}
+    - {name: fail_change, label: It Failed, permission: write, condition: "doc.status == 'Implemented'", params: [{name: note, type: text, label: What happened, required: true}]}
+  numbering: {template: "CHG-{YYYY}-{seq:5}"}
+  list: {columns: [number, title, ci, kind, planned_start, status], sort: planned_start desc}
+
+- name: ChangeFreeze
+  label: Change Freeze
+  label_plural: Change Freezes
+  kind: master
+  module: itsm
+  title_field: reason
+  description: A time no normal change is scheduled in; emergencies only.
+  fields:
+    - {name: reason, type: data, required: true, in_list: true}
+    - {name: starts_at, type: datetime, required: true, in_list: true}
+    - {name: ends_at, type: datetime, required: true, in_list: true}
+  list: {columns: [reason, starts_at, ends_at], sort: starts_at desc}
