@@ -1,0 +1,46 @@
+package: itsm
+version: 0.1.0
+label: IT Services
+description: "Configuration items and their dependencies, a service catalog, incidents by priority with their targets, problems, and changes with approval, conflicts, freezes and impact"
+depends: [core]
+
+modules:
+  - name: itsm
+    label: IT Services
+    icon: headset
+    order: 57
+    items: [Incident, CatalogRequest, Problem, ItChange, ConfigurationItem, ServiceOffering, ChangeFreeze]
+
+roles:
+  - name: Service Desk
+    description: Works incidents and catalog requests, and records problems.
+    permissions:
+      - {entity: Incident, read: true, write: true, create: true, export: true}
+      - {entity: CatalogRequest, read: true, write: true, create: true}
+      - {entity: Problem, read: true, write: true, create: true}
+      - {entity: ItChange, read: true, write: true, create: true}
+      - {entity: ConfigurationItem, read: true}
+      - {entity: ServiceOffering, read: true}
+      - {entity: ChangeFreeze, read: true}
+  - name: Change Manager
+    description: Approves or rejects changes and catalog requests, and sets freezes.
+    permissions:
+      - {entity: ItChange, read: true, write: true, create: true, export: true}
+      - {entity: ChangeFreeze, read: true, write: true, create: true}
+      - {entity: CatalogRequest, read: true, write: true}
+      - {entity: ConfigurationItem, read: true}
+      - {entity: ServiceOffering, read: true}
+      - {entity: Incident, read: true}
+      - {entity: Problem, read: true}
+  - name: Configuration Manager
+    description: Keeps the configuration items, their relations, and the service catalog.
+    permissions:
+      - {entity: ConfigurationItem, read: true, write: true, create: true, export: true, import: true}
+      - {entity: ServiceOffering, read: true, write: true, create: true}
+      - {entity: Incident, read: true}
+      - {entity: ItChange, read: true}
+  - name: Requester
+    description: Asks for things in the service catalog, and follows them.
+    permissions:
+      - {entity: ServiceOffering, read: true}
+      - {entity: CatalogRequest, read: true, create: true, if_owner: true}
