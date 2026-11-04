@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+Rebuilt with Ferrum-Frontend 80ff179: a field's label names its control for assistive technology, and a record whose title is a link shows that record's title, not its id.
+
 ## 0.1.0
 
 IT service management (FERRUM-ECOSYSTEM-002, FERRUM-ECOSYSTEM-003).
