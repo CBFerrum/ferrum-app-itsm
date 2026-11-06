@@ -11,7 +11,7 @@
   kind: master
   module: itsm
   title_field: ci_name
-  description: Something IT runs, and what it depends on or runs on. Nothing depends on itself, however far round.
+  description: Something IT runs, and what it depends on or runs on. Nothing depends on itself, however far round. Discovery tools report what they find; what people keep is theirs.
   fields:
     - {name: ci_name, type: data, required: true, unique: true, in_list: true, label: Name}
     - {name: ci_type, type: select, options: [Business Service, Application, Server, Database, Network Device, Laptop, Other], default: Application, in_list: true, in_filter: true, label: Type}
@@ -23,7 +23,13 @@
     - {name: location, type: data}
     - {name: relations, type: table, of: CiRelation}
     - {name: notes, type: text}
-  list: {columns: [ci_name, ci_type, status, environment, criticality, owner], sort: ci_name asc}
+    - {name: discovered_by, type: data, read_only: true, no_copy: true, in_filter: true, description: "The discovery source that reports it"}
+    - {name: discovery_key, type: data, read_only: true, no_copy: true, description: "What its discovery source calls it"}
+    - {name: last_seen_at, type: datetime, label: Last Seen, read_only: true, no_copy: true, description: "When its discovery source last reported it"}
+    - {name: missing_since, type: date, label: Not Seen Since, read_only: true, no_copy: true, in_list: true, in_filter: true, description: "Its discovery source has not reported it for 7 days, since this day: to look into, never retired by itself"}
+    - {name: discovered, type: json, label: Discovered Details, read_only: true, no_copy: true, description: "What its discovery source last said of it: its system, addresses, hardware"}
+  unique: [[discovered_by, discovery_key]]
+  list: {columns: [ci_name, ci_type, status, environment, criticality, owner, missing_since], sort: ci_name asc}
 
 - name: ServiceOffering
   label: Service Offering

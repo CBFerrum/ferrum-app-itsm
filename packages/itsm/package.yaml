@@ -39,6 +39,10 @@ roles:
       - {entity: ServiceOffering, read: true, write: true, create: true}
       - {entity: Incident, read: true}
       - {entity: ItChange, read: true}
+  - name: Discovery Agent
+    description: "A discovery tool's account: reports what it finds to IT Services' discovery intake, and reads configuration items."
+    permissions:
+      - {entity: ConfigurationItem, read: true}
   - name: Requester
     description: Asks for things in the service catalog, and follows them.
     permissions:

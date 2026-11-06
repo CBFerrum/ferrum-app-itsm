@@ -1,8 +1,8 @@
 id: itsm
 name: IT Services
-version: 0.1.3
+version: 0.2.0
 publisher: cbferrum
-summary: "Configuration items and their dependencies, a service catalog, incidents by priority with their targets, problems, and changes with approval, conflicts, freezes and impact"
+summary: "Configuration items and their dependencies, discovered or kept by hand, a service catalog, incidents by priority with their targets, problems, and changes with approval, conflicts, freezes and impact"
 description: README.md
 categories: [support, productivity]
 license: AGPL-3.0-only
@@ -30,3 +30,7 @@ contributes:
     - {id: incident, label: Incident, path: itsm/e/Incident/new, entity: Incident}
     - {id: request, label: Catalog Request, path: itsm/e/CatalogRequest/new, entity: CatalogRequest}
     - {id: change, label: Change, path: itsm/e/ItChange/new, entity: ItChange}
+  # The kind of notification IT Services sends ({app}.{id}, as src/discovery.rs sends it); each
+  # person chooses how it reaches them.
+  shell.notification:
+    - {id: missing, label: Configuration items you own that discovery no longer finds, default: [inapp]}
