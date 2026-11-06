@@ -81,6 +81,7 @@ item, and custodian and location kept as Assets moves it.
 
 | Version | Highlights |
 |---|---|
+| **0.2.1** | Rebuilt with Ferrum-Frontend bb60115: empty numbers read as the server reads them; settings open as their record. |
 | **0.2.0** | Discovery reports from scanners, cloud inventories and agents; items no longer reported marked; the connector app `itsm-assets` linking items to the fixed assets they are. |
 | **0.1.3** | Rebuilt with Ferrum-Frontend 00dea07: a workflow state's kept fields are read-only, its needed ones required. |
 | **0.1.2** | Rebuilt with Ferrum-Frontend daeadda: actions say what they did. |
