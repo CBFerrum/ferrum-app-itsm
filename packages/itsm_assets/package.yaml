@@ -1,0 +1,20 @@
+package: itsm_assets
+version: 0.1.0
+label: IT Services and Assets
+description: Configuration items linked to the fixed assets they are, found by serial number, with who holds them, where, and until when their warranty runs.
+depends: [itsm, assets]
+field_prefix: ita_
+
+overlays:
+  - entity: ConfigurationItem
+    ops:
+      - {op: add_field, after: serial_number, field: {name: ita_asset, type: link, to: Asset, label: Fixed Asset, in_filter: true, description: "The asset it is, in Assets: found by its serial number when none is named. An asset is one item's"}}
+      - {op: add_field, after: ita_asset, field: {name: ita_custodian, type: email, label: Held By, read_only: true, in_filter: true, description: "Who holds the asset, as Assets says"}}
+      - {op: add_field, after: ita_custodian, field: {name: ita_location, type: link, to: Location, label: Asset Location, read_only: true, description: "Where the asset is, as Assets says"}}
+      - {op: add_field, after: ita_location, field: {name: ita_warranty_ends, type: date, label: Warranty Ends, read_only: true, in_filter: true}}
+
+roles:
+  - name: Configuration Manager
+    permissions:
+      - {entity: Asset, read: true}
+      - {entity: Location, read: true}

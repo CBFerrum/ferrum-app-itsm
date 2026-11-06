@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.0
+
+Discovery, and the connector with Assets (FERRUM-ECOSYSTEM-003).
+
+- `POST /api/app/itsm/discovery` takes what scanners, cloud inventories and agents find, from a
+  Discovery Agent (a new role for a tool's account, which otherwise only reads items) or a
+  Configuration Manager. A report has up to 500 items. Each item is matched in this order:
+  1. the one its source reported under its key before;
+  2. else the one with its serial number;
+  3. else the one with its name, unless another source reports that one.
+
+  Otherwise it is new, and Live. The source's type, serial number, location, environment and
+  details are kept. The name, owner, criticality, status, notes and relations people set are left
+  alone. `runs_on` adds that relation when missing, never one that loops. The answer counts what
+  was created and updated, and says why each refused item was refused.
+- Items their source has not reported for 7 days are marked not seen since their last day, and
+  their owner is told (`itsm.missing`). They are never retired by themselves, and are cleared when
+  reported again. The desk lists them.
+- The connector app `itsm-assets` (package `itsm_assets`, shipped with IT Services, offered where
+  Assets is installed too): an item names the fixed asset it is. It is found by serial number when
+  none is named. The item shows who holds the asset, where, and when its warranty ends, kept as
+  Assets changes them. An asset is one item's.
+- Rebuilt with Ferrum-Frontend 4a3681c.
+
 ## 0.1.3
 
 Rebuilt with Ferrum-Frontend 00dea07: in a workflow state that names what may change, the other fields show read-only, and the fields the state needs show required.
