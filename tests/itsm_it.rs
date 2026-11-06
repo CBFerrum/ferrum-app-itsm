@@ -4,12 +4,14 @@
 //! Change Manager other than who asked, and seen only by who asked; incidents prioritised by impact
 //! and urgency with their targets, major on a critical item, and breached when late; a problem
 //! that resolves its incidents; changes kept out of freezes and off each other's items, decided by
-//! someone other than who raised them, with their impact; and who may do what.
+//! someone other than who raised them, with their impact; who may do what; and discovery reports
+//! matched to the items they are, kept apart from what people keep, and items no longer reported
+//! marked for a person. The connector with Assets has its own test (tests/assets_it.rs).
 
 use chrono::{Duration, Utc};
 use ferrum_kernel::secret::SecretKey;
 use ferrum_kernel::tenant::NewTenant;
-use ferrum_kernel::{Ctx, Db, DbConfig, Doc, Error, HookRegistry, Kernel, KernelSettings, ListQuery};
+use ferrum_kernel::{Ctx, Db, DbConfig, Doc, Error, HookRegistry, Kernel, KernelSettings, ListQuery, SiteRequest};
 use ferrum_meta::Catalog;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -50,6 +52,23 @@ impl T {
     }
 }
 
+/// A discovery report, as a tool posts it to `/api/app/itsm/discovery`, from `who`.
+async fn report(k: &Kernel, tenant: Uuid, who: Option<&Ctx>, body: Value) -> Result<Value, Error> {
+    let site = k.hooks.site("itsm").cloned().expect("IT Services' endpoints");
+    let req = SiteRequest {
+        tenant,
+        user: who.cloned(),
+        method: "POST".into(),
+        path: "/discovery".into(),
+        query: Default::default(),
+        headers: Default::default(),
+        body: serde_json::to_vec(&body).unwrap(),
+        client_ip: "10.0.0.2".into(),
+    };
+    let r = site.handle(k, req).await?;
+    Ok(serde_json::from_slice(&r.body).unwrap())
+}
+
 fn refused<V: std::fmt::Debug>(r: Result<V, Error>, kind: &str, says: &str) {
     let msg = format!("{r:?}");
     let ok = matches!(
@@ -70,7 +89,8 @@ async fn scenario() {
     let db = Db::connect(DbConfig { url, max_connections: 16, ..Default::default() }).await.expect("connect");
     sqlx::raw_sql("drop schema if exists public cascade; create schema public;").execute(&db.pool).await.expect("reset");
     let mut packages = ferrum_domain::packages().expect("platform packages");
-    packages.extend(ferrum_app_itsm::packages().expect("app packages"));
+    // IT Services alone: its connector with Assets needs Assets' packages (tests/assets_it.rs).
+    packages.extend(ferrum_app_itsm::packages().expect("app packages").into_iter().filter(|p| p.name() != ferrum_app_itsm::CONNECTOR_PACKAGE));
     let catalog = Catalog::from_packages(packages).expect("catalog");
     let mut hooks = HookRegistry::default();
     ferrum_domain::register(&mut hooks);
@@ -234,4 +254,79 @@ async fn scenario() {
     refused(t.k.insert(&req, "Incident", obj(incident("Mine", app, "Low", "Low"))).await, "forbidden", "");
     refused(t.act(&cfg, "ItChange", patch, "implement", Value::Null).await, "forbidden", "");
     refused(t.k.insert(&desk, "ConfigurationItem", obj(ci("rogue", "Server", "Low", json!([])))).await, "forbidden", "");
+
+    // ───────────── discovery ─────────────
+    let agent = t.user("scanner@acme.test", &["Discovery Agent"]).await;
+    let found = |key: &str, name: &str, extra: Value| {
+        let mut v = json!({"key": key, "name": name});
+        v.as_object_mut().unwrap().extend(extra.as_object().cloned().unwrap_or_default());
+        v
+    };
+    let host = found("host-1", "esx-host-1", json!({"type": "Server", "serial_number": "SN-H1", "location": "DC1", "details": {"os": "ESXi 8"}}));
+    let vm = found("vm-7", "db-server-1", json!({"serial_number": "SN-7", "details": {"os": "Debian 13", "ip": "10.0.0.7"}, "runs_on": "host-1"}));
+    let toaster = found("t-1", "toaster", json!({"type": "Toaster"}));
+    let first = report(&k, tenant, Some(&agent), json!({"source": "scanner-dc1", "items": [host, vm, toaster]})).await.expect("taken in");
+    assert_eq!((&first["created"], &first["updated"]), (&json!(1), &json!(1)), "{first}");
+    assert!(first["refused"][0]["key"] == "t-1" && first["refused"][0]["error"].as_str().unwrap().contains("not one of"), "{first}");
+    // An item people keep, matched by its name: what the source says is added, what people keep stays.
+    let d = t.get("ConfigurationItem", db_server).await;
+    assert_eq!(
+        (d["discovered_by"].as_str(), d["discovery_key"].as_str(), d["serial_number"].as_str(), d["discovered"]["os"].as_str(), d["criticality"].as_str()),
+        (Some("scanner-dc1"), Some("vm-7"), Some("SN-7"), Some("Debian 13"), Some("High"))
+    );
+    let esx = uid(&t
+        .k
+        .list(
+            &t.admin,
+            "ConfigurationItem",
+            &ListQuery { filters: ferrum_kernel::query::parse_filters(&json!({"ci_name": "esx-host-1"})).unwrap(), ..Default::default() },
+        )
+        .await
+        .unwrap()
+        .rows[0]["id"]);
+    let kinds: Vec<(String, String)> =
+        d["relations"].as_array().unwrap().iter().map(|r| (r["kind"].as_str().unwrap().to_string(), r["target"].as_str().unwrap().to_string())).collect();
+    assert!(
+        kinds.contains(&("Runs On".into(), esx.to_string())) && kinds.contains(&("Connects To".into(), payroll.to_string())),
+        "the source's relation added to people's: {kinds:?}"
+    );
+    assert_eq!(t.get("ConfigurationItem", esx).await["status"], "Live", "found, so it runs");
+    // Reported again under its key: matched by it, its name people's; a relation that loops is refused.
+    let again = report(
+        &k,
+        tenant,
+        Some(&agent),
+        json!({"source": "scanner-dc1", "items": [
+        found("vm-7", "db-renamed", json!({"details": {"os": "Debian 13.1"}})), found("host-1", "esx-host-1", json!({"runs_on": "vm-7"}))]}),
+    )
+    .await
+    .unwrap();
+    assert_eq!((&again["created"], &again["updated"]), (&json!(0), &json!(2)), "{again}");
+    assert!(again["refused"][0]["error"].as_str().unwrap().contains("come back round"), "{again}");
+    let d = t.get("ConfigurationItem", db_server).await;
+    assert_eq!((d["ci_name"].as_str(), d["discovered"]["os"].as_str()), (Some("db-server-1"), Some("Debian 13.1")));
+    // One source's item is not another's; reports come from agents and the configuration's managers.
+    let other = report(&k, tenant, Some(&agent), json!({"source": "cloud-inventory", "items": [found("i-123", "db-server-1", json!({}))]})).await.unwrap();
+    assert!(other["refused"][0]["error"].as_str().unwrap().contains("reported by scanner-dc1"), "{other}");
+    refused(report(&k, tenant, Some(&req), json!({"source": "s", "items": [found("k", "n", json!({}))]})).await, "forbidden", "Discovery Agent");
+    refused(report(&k, tenant, Some(&agent), json!({"source": "s", "items": []})).await, "invalid", "1 to 500");
+    assert!(matches!(report(&k, tenant, None, json!({})).await, Err(Error::Unauthorized(_))));
+    // A week unreported: marked, its owner told once; reported again, cleared.
+    t.set(&cfg, "ConfigurationItem", db_server, json!({"owner": "cmdb@acme.test"})).await.expect("its owner");
+    ferrum_app_itsm::maintenance_at(&k, Utc::now() + Duration::days(8)).await.unwrap();
+    ferrum_app_itsm::maintenance_at(&k, Utc::now() + Duration::days(9)).await.unwrap();
+    let today = Utc::now().date_naive().to_string();
+    assert_eq!(t.get("ConfigurationItem", db_server).await["missing_since"].as_str(), Some(today.as_str()));
+    assert_eq!(t.get("ConfigurationItem", esx).await["status"], "Live", "never retired by itself");
+    let mut tx = k.db.tenant_tx(tenant).await.unwrap();
+    let told: i64 = sqlx::query_scalar("select count(*) from notification where tenant_id = $1 and record_id = $2 and kind = 'itsm.missing'")
+        .bind(tenant)
+        .bind(db_server)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(told, 1, "its owner, once");
+    report(&k, tenant, Some(&agent), json!({"source": "scanner-dc1", "items": [found("vm-7", "db-server-1", json!({}))]})).await.unwrap();
+    assert!(t.get("ConfigurationItem", db_server).await["missing_since"].is_null(), "seen again");
 }

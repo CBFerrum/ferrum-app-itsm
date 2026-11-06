@@ -1,0 +1,18 @@
+# IT Services' connector with Assets (Ferrum docs/plan/apps-ui.md §13): what needs both apps'
+# records. A configuration item names the fixed asset it is, found by its serial number, and shows
+# who holds it, where, and until when its warranty runs. Offered where both apps are installed;
+# ships with IT Services.
+id: itsm-assets
+name: IT Services and Assets
+version: 0.1.0
+publisher: cbferrum
+summary: Configuration items linked to the fixed assets they are, with who holds them, where, and their warranty
+categories: [connector, support]
+license: AGPL-3.0-only
+homepage: https://github.com/CBFerrum/ferrum-app-itsm
+support: https://github.com/CBFerrum/ferrum-app-itsm/issues
+runtime: native
+platform: ">=0.3.2, <0.4"
+requires: {itsm: ">=0.2", assets: ">=0.3"}
+packages: [itsm_assets]
+uninstall: ask

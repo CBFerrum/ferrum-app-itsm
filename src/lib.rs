@@ -7,14 +7,20 @@
 //!   with their targets and breaches, and problems that resolve their incidents.
 //! * `changes`: standard, normal and emergency changes, decided by a Change Manager who did not
 //!   raise them, kept out of freezes and off each other's items.
+//! * `discovery`: what scanners, cloud inventories and agents find, reported to an intake and
+//!   matched to the items they are; items no longer reported marked for a person to look into.
+//! * `assets`: the connector with Assets (`itsm_assets`): items linked to the fixed assets they
+//!   are, with who holds them, where, and their warranty.
 //!
 //! This app's own design, after the practices ITIL describes; no code was copied
 //! (docs/PROVENANCE.md). Hooks are registered per entity, so a workspace without the `itsm`
 //! package never runs them.
 
+mod assets;
 mod changes;
 mod cmdb;
 mod desk;
+mod discovery;
 
 use chrono::{DateTime, Utc};
 use ferrum_domain::reports::ReportSource;
@@ -35,7 +41,8 @@ pub fn packages() -> std::result::Result<Vec<ferrum_meta::Package>, ferrum_meta:
     ferrum_meta::catalog::load_embedded(EMBEDDED)
 }
 
-/// Registers this app's document hooks.
+/// Registers this app's document hooks and its discovery intake. The connector's hook on
+/// configuration items runs only where `itsm_assets` is installed.
 pub fn register(hooks: &mut HookRegistry) {
     hooks
         .register("ConfigurationItem", Arc::new(cmdb::CiHook))
@@ -44,14 +51,26 @@ pub fn register(hooks: &mut HookRegistry) {
         .register("Problem", Arc::new(desk::ProblemHook))
         .register("ItChange", Arc::new(changes::ChangeHook))
         .register("ChangeFreeze", Arc::new(changes::FreezeHook));
+    hooks.scoped(&[CONNECTOR_PACKAGE.to_string()], |h| {
+        h.register("ConfigurationItem", Arc::new(assets::AssetLinkHook));
+    });
+    hooks.add_site("itsm", Arc::new(discovery::DiscoverySite));
 }
+
+/// The connector with Assets' package.
+pub const CONNECTOR_PACKAGE: &str = "itsm_assets";
+
+/// The manifest of the connector app with Assets (`connectors/assets/app.yaml`): its package is
+/// `itsm_assets`, its code this crate's. It ships with IT Services.
+pub const CONNECTOR_MANIFEST: &str = include_str!("../connectors/assets/app.yaml");
 
 /// This app's reports: none of its own yet.
 pub fn reports() -> Vec<Arc<dyn ReportSource>> {
     vec![]
 }
 
-/// Upkeep: incidents still open past their time marked breached.
+/// Upkeep: incidents still open past their time marked breached; items their discovery source no
+/// longer reports marked not seen; and, with the connector, what items show of their asset kept.
 pub async fn maintenance(k: &Kernel) -> Result<()> {
     maintenance_at(k, Utc::now()).await
 }
@@ -68,9 +87,14 @@ pub async fn maintenance_at(k: &Kernel, now: DateTime<Utc>) -> Result<()> {
             if !schema.packages.iter().any(|p| p == "itsm") {
                 return Ok(());
             }
+            let connected = schema.packages.iter().any(|p| p == CONNECTOR_PACKAGE);
             let ctx = Ctx::system(tenant, schema);
             let mut tx = k.db.tenant_tx(tenant).await?;
             desk::mark_breached(k, &ctx, &mut tx, now).await?;
+            discovery::mark_missing(k, &ctx, &mut tx, now).await?;
+            if connected {
+                assets::refresh(k, &ctx, &mut tx).await?;
+            }
             tx.commit().await?;
             Ok::<(), Error>(())
         };
@@ -112,5 +136,7 @@ mod tests {
         let files = UI.iter().map(|(p, b)| (p.to_string(), b.to_vec())).collect();
         let ui = ferrum_apps::ui::prepare("itsm", files).expect("ui/dist is an interface release");
         assert!(UI.iter().any(|(p, _)| *p == "index.html") && !UI.iter().any(|(p, _)| p.starts_with('.')), "{}", ui.digest);
+        let connector = ferrum_apps::AppManifest::parse(CONNECTOR_MANIFEST).expect("connectors/assets/app.yaml");
+        assert_eq!(connector.packages, vec![CONNECTOR_PACKAGE.to_string()]);
     }
 }

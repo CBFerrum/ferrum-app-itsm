@@ -1,5 +1,5 @@
-// The desk: open incidents by priority (breached ones marked), catalog requests waiting, and the
-// changes approved and coming up. Each opens its record.
+// The desk: open incidents by priority (breached ones marked), catalog requests waiting, the
+// changes approved and coming up, and the items discovery no longer finds. Each opens its record.
 
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
@@ -26,12 +26,14 @@ export function Home() {
   const q = useQuery({
     queryKey: ["itsm", "desk"],
     queryFn: async () => {
-      const [incidents, requests, changes] = await Promise.all([
+      const [incidents, requests, changes, missing] = await Promise.all([
         rows("Incident", [["status", "in", ["New", "In Progress", "On Hold"]]]),
         rows("CatalogRequest", [["status", "in", ["Submitted", "Approved"]]]),
         rows("ItChange", [["status", "in", ["Submitted", "Approved"]]], { sort: "planned_start asc" }),
+        // Only those who may read configuration items see them.
+        rows("ConfigurationItem", [["missing_since", "is", "set"]], { sort: "missing_since asc" }).catch(() => [] as Row[]),
       ]);
-      return { incidents: byPriority(incidents), requests, changes };
+      return { incidents: byPriority(incidents), requests, changes, missing };
     },
     refetchInterval: 30_000,
   });
@@ -75,6 +77,21 @@ export function Home() {
             ))}
           </ul>
         </section>
+        {q.data.missing.length > 0 && (
+          <section className="card card-pad stack" aria-label="Not seen by discovery">
+            <h3>Not seen by discovery ({q.data.missing.length})</h3>
+            <ul className="stack">
+              {q.data.missing.map((c) => (
+                <li key={c.id}>
+                  <Link to={`/e/ConfigurationItem/${c.id}`}>{String(c.ci_name)}</Link>{" "}
+                  <span className="faint">
+                    · {String(c.discovered_by ?? "")}, last {String(c.missing_since ?? "")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     </div>
   );
