@@ -1,7 +1,8 @@
 # IT Services
 
 IT service management for [Ferrum](https://github.com/CBFerrum/Ferrum):
-- configuration items and what they depend on or run on;
+- configuration items and what they depend on or run on, reported by discovery tools or kept by
+  hand, and linked to the fixed assets they are where Assets is installed;
 - a service catalog, and requests approved by someone other than who asked;
 - incidents prioritised by impact and urgency, with their targets and breaches;
 - problems, and changes with approval, conflicts, freezes and impact.
@@ -9,15 +10,31 @@ IT service management for [Ferrum](https://github.com/CBFerrum/Ferrum):
 | | |
 |---|---|
 | 🛠️ App | `itsm`, native, in the server |
-| 🧩 Package | `itsm` (needs only the platform's core) |
+| 🧩 Packages | `itsm` (needs only the platform's core); `itsm_assets`, the connector app `itsm-assets` with Assets |
 | 🖥️ Interface | its own, at `/itsm/`: open incidents by priority, requests waiting and changes coming up, and the records |
-| 🔐 Roles | Service Desk, Change Manager, Configuration Manager, Requester |
+| 🔐 Roles | Service Desk, Change Manager, Configuration Manager, Requester, Discovery Agent (a tool's account) |
 | 📜 Licence | AGPL-3.0-only |
 
 ## Highlights
 
 - **Configuration items.** An item depends on, runs on or connects to others. A dependency never
   comes back round to the item itself, however far; connections may.
+- **Discovery.** Network scanners, cloud inventories and agents report what they find to
+  `POST /api/app/itsm/discovery` with an API key of a Discovery Agent:
+  `{"source", "items": [{"key", "name", "type", "serial_number", "location", "environment", "details", "runs_on"}]}`,
+  up to 500 at a time. An item is matched in this order:
+  1. the one its source reported under its key before;
+  2. else the one with its serial number;
+  3. else the one with its name, unless another source reports that one.
+
+  Otherwise it is new, and Live. The source's type, serial number, location, environment and
+  details are kept. The name, owner, criticality, status, notes and relations people set are not
+  touched. `runs_on` adds that relation when missing, never one that loops. Each item refused says
+  why. An item its source has not reported for 7 days is marked not seen since its last day, and
+  its owner is told. It is never retired by itself.
+- **Assets.** With the connector app `itsm-assets` (where Assets is installed too), an item names
+  the fixed asset it is. It is found by serial number when none is named, and shows who holds it,
+  where, and when its warranty ends, kept as Assets changes them. An asset is one item's.
 - **The catalog.** A request is due its offering's hours after it is asked. One that needs
   approval is fulfilled only once a Change Manager approves it, and not the one who asked. A
   rejection says why. Requesters see only their own requests.
@@ -45,20 +62,26 @@ cd ui && npm run build && npm run check
 - incidents prioritised, resolved and breached;
 - a problem resolving its incidents;
 - changes through freezes, conflicts and their decisions;
-- who may do what.
+- who may do what;
+- discovery reports matched by name and key, a refused type, a loop and another source's item
+  refused, and an item no longer reported marked and its owner told once.
+
+`tests/assets_it.rs` (`FERRUM_ITSM_ASSETS_TEST_DATABASE_URL`) runs the connector with ERP and
+Assets: items finding their laptop by serial number or naming it, an asset refused to a second
+item, and custodian and location kept as Assets moves it.
 
 ## Not yet
 
-- Discovery of configuration items from the network, cloud accounts or agents.
+- Scanning networks or reading cloud accounts itself: tools do, and report to the intake.
 - Helpdesk tickets raised as incidents, and incidents told to their reporters by mail.
 - Business hours, holidays and pauses in the targets (they run on the clock).
 - A change advisory board of several approvers, and change calendars.
-- Asset records in Assets linked to items (an item has its serial number).
 
 ## Changelog
 
 | Version | Highlights |
 |---|---|
+| **0.2.0** | Discovery reports from scanners, cloud inventories and agents; items no longer reported marked; the connector app `itsm-assets` linking items to the fixed assets they are. |
 | **0.1.3** | Rebuilt with Ferrum-Frontend 00dea07: a workflow state's kept fields are read-only, its needed ones required. |
 | **0.1.2** | Rebuilt with Ferrum-Frontend daeadda: actions say what they did. |
 | **0.1.1** | Rebuilt with Ferrum-Frontend 80ff179: labels name their fields, and linked titles show their titles. |
