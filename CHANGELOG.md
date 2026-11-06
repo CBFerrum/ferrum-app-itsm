@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.5
+
+Rebuilt with Ferrum-Frontend 922fcfb: an action's dialog says every refusal, the errors on what the action made (another record's rows) among them, and an action with parameters and a confirmation asks once.
+
 ## 0.2.4
 
 What walking the desk found: a waiting request was listed as its number and status alone, and a change coming up without its date. The desk now names what each request asks for, who asked and when it is due, soonest first, and when each change starts.
