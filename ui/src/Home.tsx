@@ -4,7 +4,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { api, docPath, formatMoment, t } from "@ferrum/client";
+import { api, docPath, formatMoment, t, isolate } from "@ferrum/client";
 import { Badge, ErrorState, PageLoading, useShellTitle } from "@ferrum/kit";
 
 export interface Row {
@@ -39,7 +39,7 @@ export function changeLine(c: Row): string {
 }
 
 export function Home() {
-  useShellTitle("IT Services");
+  useShellTitle(t("IT Services"));
   const q = useQuery({
     queryKey: ["itsm", "desk"],
     queryFn: async () => {
@@ -68,7 +68,7 @@ export function Home() {
           <ul className="stack">
             {q.data.incidents.map((i) => (
               <li key={i.id}>
-                <Badge tone={TONE[String(i.priority)] ?? "neutral"}>{String(i.priority ?? "")}</Badge> <Link to={`/e/Incident/${i.id}`}>{String(i.title)}</Link>
+                <Badge tone={TONE[String(i.priority)] ?? "neutral"}>{isolate(String(i.priority ?? ""))}</Badge> <Link to={`/e/Incident/${i.id}`}>{isolate(String(i.title))}</Link>
                 {i.breached ? <Badge tone="red">{t("Breached")}</Badge> : null}
               </li>
             ))}
@@ -79,7 +79,7 @@ export function Home() {
           <ul className="stack">
             {q.data.requests.map((r) => (
               <li key={r.id}>
-                <Link to={`/e/CatalogRequest/${r.id}`}>{requestLine(r)}</Link>
+                <Link to={`/e/CatalogRequest/${r.id}`}>{isolate(requestLine(r))}</Link>
               </li>
             ))}
           </ul>
@@ -89,7 +89,7 @@ export function Home() {
           <ul className="stack">
             {q.data.changes.map((c) => (
               <li key={c.id}>
-                <Link to={`/e/ItChange/${c.id}`}>{changeLine(c)}</Link>
+                <Link to={`/e/ItChange/${c.id}`}>{isolate(changeLine(c))}</Link>
               </li>
             ))}
           </ul>
@@ -100,9 +100,9 @@ export function Home() {
             <ul className="stack">
               {q.data.missing.map((c) => (
                 <li key={c.id}>
-                  <Link to={`/e/ConfigurationItem/${c.id}`}>{String(c.ci_name)}</Link>{" "}
+                  <Link to={`/e/ConfigurationItem/${c.id}`}>{isolate(String(c.ci_name))}</Link>{isolate(" ")}
                   <span className="faint">
-                    · {String(c.discovered_by ?? "")}{t(", last")} {String(c.missing_since ?? "")}
+                    · {isolate(String(c.discovered_by ?? ""))}{t(", last")} {isolate(String(c.missing_since ?? ""))}
                   </span>
                 </li>
               ))}
