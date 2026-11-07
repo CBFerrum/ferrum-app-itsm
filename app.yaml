@@ -1,6 +1,6 @@
 id: itsm
 name: IT Services
-version: 0.2.11
+version: 0.2.12
 publisher: cbferrum
 summary: "Configuration items and their dependencies, discovered or kept by hand, a service catalog, incidents by priority with their targets, problems, and changes with approval, conflicts, freezes and impact"
 description: README.md

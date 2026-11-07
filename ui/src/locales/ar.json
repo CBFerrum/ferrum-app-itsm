@@ -12,5 +12,8 @@
   "Open incidents ({length})": "الحوادث المفتوحة ({length})",
   "Requests waiting": "طلبات بالانتظار",
   "Requests waiting ({length})": "طلبات بالانتظار ({length})",
-  "The desk": "المكتب"
+  "The desk": "المكتب",
+  "by {value}": "بواسطة {value}",
+  "due {due}": "مستحق {due}",
+  "from {starts}": "من {starts}"
 }

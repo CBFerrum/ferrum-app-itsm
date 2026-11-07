@@ -29,13 +29,13 @@ const when = (at: unknown) => (typeof at === "string" && at ? formatMoment(at, {
 export function requestLine(r: Row): string {
   const asked = String((r._titles as Record<string, string> | undefined)?.offering ?? "");
   const due = when(r.due_at);
-  return [String(r.number ?? ""), asked, r.requested_by ? `by ${String(r.requested_by)}` : "", due ? `due ${due}` : "", String(r.status ?? "")].filter(Boolean).join(" · ");
+  return [String(r.number ?? ""), asked, r.requested_by ? t("by {value}", { value: String(r.requested_by) }) : "", due ? t("due {due}", { due }) : "", String(r.status ?? "")].filter(Boolean).join(" · ");
 }
 
 /** A change as the desk reads it: what it is, when it starts, and where it stands. */
 export function changeLine(c: Row): string {
   const starts = when(c.planned_start);
-  return [String(c.number ?? ""), String(c.title ?? ""), starts ? `from ${starts}` : "", String(c.status ?? "")].filter(Boolean).join(" · ");
+  return [String(c.number ?? ""), String(c.title ?? ""), starts ? t("from {starts}", { starts }) : "", String(c.status ?? "")].filter(Boolean).join(" · ");
 }
 
 export function Home() {
