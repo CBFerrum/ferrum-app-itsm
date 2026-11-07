@@ -81,6 +81,7 @@ item, and custodian and location kept as Assets moves it.
 
 | Version | Highlights |
 |---|---|
+| **0.2.12** | Sentences built in code are words too, in Arabic and Hindi. |
 | **0.2.11** | The assistant knows its records. |
 | **0.2.10** | Rebuilt with Ferrum-Frontend 5b22e7b: its own words in Arabic and Hindi. |
 | **0.2.9** | Rebuilt with Ferrum-Frontend 6537d65: once-shown answers kept; English isolated right to left; its own words translatable by a workspace. |

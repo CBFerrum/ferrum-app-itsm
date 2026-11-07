@@ -12,5 +12,8 @@
   "Open incidents ({length})": "खुली घटनाएँ ({length})",
   "Requests waiting": "प्रतीक्षा में अनुरोध",
   "Requests waiting ({length})": "प्रतीक्षा में अनुरोध ({length})",
-  "The desk": "डेस्क"
+  "The desk": "डेस्क",
+  "by {value}": "{value} द्वारा",
+  "due {due}": "देय {due}",
+  "from {starts}": "{starts} से"
 }
