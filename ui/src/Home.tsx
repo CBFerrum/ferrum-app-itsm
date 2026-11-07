@@ -4,7 +4,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { api, docPath, formatMoment } from "@ferrum/client";
+import { api, docPath, formatMoment, t } from "@ferrum/client";
 import { Badge, ErrorState, PageLoading, useShellTitle } from "@ferrum/kit";
 
 export interface Row {
@@ -59,23 +59,23 @@ export function Home() {
   return (
     <div className="np-page">
       <header className="row" style={{ justifyContent: "space-between" }}>
-        <h2>The desk</h2>
-        <Link to="/e/Incident/new">New incident</Link>
+        <h2>{t("The desk")}</h2>
+        <Link to="/e/Incident/new">{t("New incident")}</Link>
       </header>
       <div className="np-columns">
-        <section className="card card-pad stack" aria-label="Open incidents">
-          <h3>Open incidents ({q.data.incidents.length})</h3>
+        <section className="card card-pad stack" aria-label={t("Open incidents")}>
+          <h3>{t("Open incidents ({length})", { length: q.data.incidents.length })}</h3>
           <ul className="stack">
             {q.data.incidents.map((i) => (
               <li key={i.id}>
                 <Badge tone={TONE[String(i.priority)] ?? "neutral"}>{String(i.priority ?? "")}</Badge> <Link to={`/e/Incident/${i.id}`}>{String(i.title)}</Link>
-                {i.breached ? <Badge tone="red">Breached</Badge> : null}
+                {i.breached ? <Badge tone="red">{t("Breached")}</Badge> : null}
               </li>
             ))}
           </ul>
         </section>
-        <section className="card card-pad stack" aria-label="Requests waiting">
-          <h3>Requests waiting ({q.data.requests.length})</h3>
+        <section className="card card-pad stack" aria-label={t("Requests waiting")}>
+          <h3>{t("Requests waiting ({length})", { length: q.data.requests.length })}</h3>
           <ul className="stack">
             {q.data.requests.map((r) => (
               <li key={r.id}>
@@ -84,8 +84,8 @@ export function Home() {
             ))}
           </ul>
         </section>
-        <section className="card card-pad stack" aria-label="Changes coming up">
-          <h3>Changes coming up ({q.data.changes.length})</h3>
+        <section className="card card-pad stack" aria-label={t("Changes coming up")}>
+          <h3>{t("Changes coming up ({length})", { length: q.data.changes.length })}</h3>
           <ul className="stack">
             {q.data.changes.map((c) => (
               <li key={c.id}>
@@ -95,14 +95,14 @@ export function Home() {
           </ul>
         </section>
         {q.data.missing.length > 0 && (
-          <section className="card card-pad stack" aria-label="Not seen by discovery">
-            <h3>Not seen by discovery ({q.data.missing.length})</h3>
+          <section className="card card-pad stack" aria-label={t("Not seen by discovery")}>
+            <h3>{t("Not seen by discovery ({length})", { length: q.data.missing.length })}</h3>
             <ul className="stack">
               {q.data.missing.map((c) => (
                 <li key={c.id}>
                   <Link to={`/e/ConfigurationItem/${c.id}`}>{String(c.ci_name)}</Link>{" "}
                   <span className="faint">
-                    · {String(c.discovered_by ?? "")}, last {String(c.missing_since ?? "")}
+                    · {String(c.discovered_by ?? "")}{t(", last")} {String(c.missing_since ?? "")}
                   </span>
                 </li>
               ))}
