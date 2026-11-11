@@ -12,5 +12,6 @@
   "by {value}": "بواسطة {value}",
   "due {due}": "مستحق {due}",
   "from {starts}": "من {starts}",
-  "{incidents} open incidents · {requests} requests waiting": "{incidents} حوادث مفتوحة · {requests} طلبات بالانتظار"
+  "{n} open incidents": "{n} حوادث مفتوحة",
+  "{n} requests waiting": "{n} طلبات بالانتظار"
 }

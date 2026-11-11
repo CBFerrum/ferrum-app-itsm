@@ -4,7 +4,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api, docPath, formatMoment, t, isolate } from "@ferrum/client";
-import { Badge, ButtonLink, HomeSkeleton, LoadFailed, PageHead, Queue, QueueGrid, QueueItem, StatusBadge, useShellTitle } from "@ferrum/kit";
+import { Badge, ButtonLink, HomeSkeleton, LoadFailed, PageHead, PageStack, Queue, QueueGrid, QueueItem, StatusBadge, type Tone, useShellTitle } from "@ferrum/kit";
 
 export interface Row {
   id: string;
@@ -19,7 +19,7 @@ export function byPriority(list: Row[]): Row[] {
   return [...list].sort((a, b) => String(a.priority ?? "P9").localeCompare(String(b.priority ?? "P9")) || String(a.resolve_by ?? "").localeCompare(String(b.resolve_by ?? "")));
 }
 
-const TONE: Record<string, "red" | "amber" | "blue" | "neutral"> = { P1: "red", P2: "amber", P3: "blue", P4: "neutral" };
+const TONE: Record<string, Tone> = { P1: "red", P2: "amber", P3: "blue", P4: "neutral" };
 
 /** The tone of a priority mark, from its stored id (P1..P4); any other value is neutral. */
 export const priorityTone = (p: unknown) => (typeof p === "string" && Object.prototype.hasOwnProperty.call(TONE, p) ? TONE[p] : "neutral");
@@ -65,22 +65,23 @@ export function Home() {
     </ButtonLink>
   );
   if (q.isPending) return (
-    <>
+    <PageStack>
       <PageHead title={t("The desk")} />
       <HomeSkeleton queues={3} />
-    </>
+    </PageStack>
   );
   if (q.isError) return (
-    <>
+    <PageStack>
       <PageHead title={t("The desk")} actions={create} />
       <LoadFailed error={q.error} onRetry={() => void q.refetch()} />
-    </>
+    </PageStack>
   );
   const { incidents, requests, changes, missing } = q.data;
+  const summary = [incidents.length && t("{n} open incidents", { n: incidents.length }), requests.length && t("{n} requests waiting", { n: requests.length })].filter(Boolean).join(" · ");
   const parts = (...p: unknown[]) => isolate(p.filter(Boolean).join(" · "));
   return (
-    <>
-      <PageHead title={t("The desk")} description={incidents.length + requests.length > 0 ? t("{incidents} open incidents · {requests} requests waiting", { incidents: incidents.length, requests: requests.length }) : undefined} actions={create} />
+    <PageStack>
+      <PageHead title={t("The desk")} description={summary ? isolate(summary) : undefined} actions={create} />
       <QueueGrid>
         <Queue title={t("Open incidents")} count={incidents.length} tone={incidents.some((i) => i.breached) ? "attention" : "default"} more={{ to: "/e/Incident", count: incidents.length - LIMIT }}>
           {incidents.slice(0, LIMIT).map((i) => (
@@ -125,6 +126,6 @@ export function Home() {
           </Queue>
         )}
       </QueueGrid>
-    </>
+    </PageStack>
   );
 }
