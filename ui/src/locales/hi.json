@@ -2,18 +2,15 @@
   ", last": ", आखिरी",
   "Breached": "उल्लंघन हुआ",
   "Changes coming up": "आने वाले बदलाव",
-  "Changes coming up ({length})": "आने वाले बदलाव ({length})",
   "Go to the desk": "डेस्क पर जाएँ",
   "IT Services": "IT सेवाएँ",
   "New incident": "नई घटना",
   "Not seen by discovery": "डिस्कवरी ने नहीं देखा",
-  "Not seen by discovery ({length})": "डिस्कवरी ने नहीं देखा ({length})",
   "Open incidents": "खुली घटनाएँ",
-  "Open incidents ({length})": "खुली घटनाएँ ({length})",
   "Requests waiting": "प्रतीक्षा में अनुरोध",
-  "Requests waiting ({length})": "प्रतीक्षा में अनुरोध ({length})",
   "The desk": "डेस्क",
   "by {value}": "{value} द्वारा",
   "due {due}": "देय {due}",
-  "from {starts}": "{starts} से"
+  "from {starts}": "{starts} से",
+  "{incidents} open incidents · {requests} requests waiting": "{incidents} खुली घटनाएँ · {requests} अनुरोध प्रतीक्षा में"
 }
