@@ -3,9 +3,8 @@
 // items discovery no longer finds. Each opens its record.
 
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router";
 import { api, docPath, formatMoment, t, isolate } from "@ferrum/client";
-import { Badge, ErrorState, ListSkeleton, useShellTitle } from "@ferrum/kit";
+import { Badge, ButtonLink, HomeSkeleton, LoadFailed, PageHead, Queue, QueueGrid, QueueItem, StatusBadge, useShellTitle } from "@ferrum/kit";
 
 export interface Row {
   id: string;
@@ -21,6 +20,12 @@ export function byPriority(list: Row[]): Row[] {
 }
 
 const TONE: Record<string, "red" | "amber" | "blue" | "neutral"> = { P1: "red", P2: "amber", P3: "blue", P4: "neutral" };
+
+/** The tone of a priority mark, from its stored id (P1..P4); any other value is neutral. */
+export const priorityTone = (p: unknown) => (typeof p === "string" && Object.prototype.hasOwnProperty.call(TONE, p) ? TONE[p] : "neutral");
+
+/** The queues show this many rows each; the rest is "and N more", linking to the list. */
+const LIMIT = 5;
 
 /** A moment on the shown clock: "8 Nov, 20:21". */
 const when = (at: unknown) => (typeof at === "string" && at ? formatMoment(at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
@@ -54,62 +59,72 @@ export function Home() {
     },
     refetchInterval: 30_000,
   });
-  if (q.isPending) return <ListSkeleton className="np-page" />;
-  if (q.isError) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
+  const create = (
+    <ButtonLink to="/e/Incident/new" variant="primary" icon="plus">
+      {t("New incident")}
+    </ButtonLink>
+  );
+  if (q.isPending) return (
+    <>
+      <PageHead title={t("The desk")} />
+      <HomeSkeleton queues={3} />
+    </>
+  );
+  if (q.isError) return (
+    <>
+      <PageHead title={t("The desk")} actions={create} />
+      <LoadFailed error={q.error} onRetry={() => void q.refetch()} />
+    </>
+  );
+  const { incidents, requests, changes, missing } = q.data;
+  const parts = (...p: unknown[]) => isolate(p.filter(Boolean).join(" · "));
   return (
-    <div className="np-page">
-      <header className="row" style={{ justifyContent: "space-between" }}>
-        <h2>{t("The desk")}</h2>
-        <Link to="/e/Incident/new">{t("New incident")}</Link>
-      </header>
-      <div className="np-columns">
-        <section className="card card-pad stack" aria-label={t("Open incidents")}>
-          <h3>{t("Open incidents ({length})", { length: q.data.incidents.length })}</h3>
-          <ul className="stack">
-            {q.data.incidents.map((i) => (
-              <li key={i.id}>
-                <Badge tone={TONE[String(i.priority)] ?? "neutral"}>{isolate(String(i.priority ?? ""))}</Badge> <Link to={`/e/Incident/${i.id}`}>{isolate(String(i.title))}</Link>
-                {i.breached ? <Badge tone="red">{t("Breached")}</Badge> : null}
-              </li>
+    <>
+      <PageHead title={t("The desk")} description={incidents.length + requests.length > 0 ? t("{incidents} open incidents · {requests} requests waiting", { incidents: incidents.length, requests: requests.length }) : undefined} actions={create} />
+      <QueueGrid>
+        <Queue title={t("Open incidents")} count={incidents.length} tone={incidents.some((i) => i.breached) ? "attention" : "default"} more={{ to: "/e/Incident", count: incidents.length - LIMIT }}>
+          {incidents.slice(0, LIMIT).map((i) => (
+            <QueueItem
+              key={i.id}
+              to={`/e/Incident/${i.id}`}
+              title={isolate(String(i.title))}
+              meta={parts(i.number, when(i.resolve_by) && t("due {due}", { due: when(i.resolve_by) }))}
+              trailing={
+                <>
+                  {i.breached ? <Badge tone="red">{t("Breached")}</Badge> : null}
+                  <Badge tone={priorityTone(i.priority)}>{isolate(String(i.priority ?? ""))}</Badge>
+                </>
+              }
+            />
+          ))}
+        </Queue>
+        <Queue title={t("Requests waiting")} count={requests.length} more={{ to: "/e/CatalogRequest", count: requests.length - LIMIT }}>
+          {requests.slice(0, LIMIT).map((r) => {
+            const asked = String((r._titles as Record<string, string> | undefined)?.offering ?? "");
+            return (
+              <QueueItem
+                key={r.id}
+                to={`/e/CatalogRequest/${r.id}`}
+                title={isolate(asked || String(r.number ?? ""))}
+                meta={parts(asked && r.number, when(r.due_at) && t("due {due}", { due: when(r.due_at) }), r.requested_by && t("by {value}", { value: String(r.requested_by) }))}
+                trailing={<StatusBadge value={r.status} />}
+              />
+            );
+          })}
+        </Queue>
+        <Queue title={t("Changes coming up")} count={changes.length} more={{ to: "/e/ItChange", count: changes.length - LIMIT }}>
+          {changes.slice(0, LIMIT).map((c) => (
+            <QueueItem key={c.id} to={`/e/ItChange/${c.id}`} title={isolate(String(c.title ?? c.number ?? ""))} meta={parts(c.number, when(c.planned_start) && t("from {starts}", { starts: when(c.planned_start) }))} trailing={<StatusBadge value={c.status} />} />
+          ))}
+        </Queue>
+        {missing.length > 0 && (
+          <Queue title={t("Not seen by discovery")} count={missing.length} more={{ to: "/e/ConfigurationItem", count: missing.length - LIMIT }}>
+            {missing.slice(0, LIMIT).map((c) => (
+              <QueueItem key={c.id} to={`/e/ConfigurationItem/${c.id}`} title={isolate(String(c.ci_name))} meta={isolate(`${String(c.discovered_by ?? "")}${t(", last")} ${String(c.missing_since ?? "")}`)} />
             ))}
-          </ul>
-        </section>
-        <section className="card card-pad stack" aria-label={t("Requests waiting")}>
-          <h3>{t("Requests waiting ({length})", { length: q.data.requests.length })}</h3>
-          <ul className="stack">
-            {q.data.requests.map((r) => (
-              <li key={r.id}>
-                <Link to={`/e/CatalogRequest/${r.id}`}>{isolate(requestLine(r))}</Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-        <section className="card card-pad stack" aria-label={t("Changes coming up")}>
-          <h3>{t("Changes coming up ({length})", { length: q.data.changes.length })}</h3>
-          <ul className="stack">
-            {q.data.changes.map((c) => (
-              <li key={c.id}>
-                <Link to={`/e/ItChange/${c.id}`}>{isolate(changeLine(c))}</Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-        {q.data.missing.length > 0 && (
-          <section className="card card-pad stack" aria-label={t("Not seen by discovery")}>
-            <h3>{t("Not seen by discovery ({length})", { length: q.data.missing.length })}</h3>
-            <ul className="stack">
-              {q.data.missing.map((c) => (
-                <li key={c.id}>
-                  <Link to={`/e/ConfigurationItem/${c.id}`}>{isolate(String(c.ci_name))}</Link>{isolate(" ")}
-                  <span className="faint">
-                    · {isolate(String(c.discovered_by ?? ""))}{t(", last")} {isolate(String(c.missing_since ?? ""))}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
+          </Queue>
         )}
-      </div>
-    </div>
+      </QueueGrid>
+    </>
   );
 }
