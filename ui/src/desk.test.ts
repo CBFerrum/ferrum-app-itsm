@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { byPriority, changeLine, requestLine } from "./Home";
+import { byPriority, changeLine, priorityTone, requestLine } from "./Home";
 
 describe("the desk", () => {
   it("puts P1 first, then the soonest due", () => {
@@ -17,5 +17,10 @@ describe("the desk", () => {
     expect(r.endsWith(" · Submitted")).toBe(true);
     expect(requestLine({ id: "r", number: "REQ-2", status: "Approved" })).toBe("REQ-2 · Approved");
     expect(changeLine({ id: "c", number: "CHG-1", title: "Patch", planned_start: "2026-11-10T22:00:00Z", status: "Approved" })).toMatch(/^CHG-1 · Patch · from .+ · Approved$/);
+  });
+
+  it("keeps a priority's tone from its stored id", () => {
+    expect(["P1", "P2", "P3", "P4", "P9", "", null].map(priorityTone)).toEqual(["red", "amber", "blue", "neutral", "neutral", "neutral", "neutral"]);
+    expect(priorityTone("toString")).toBe("neutral");
   });
 });
