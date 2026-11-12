@@ -31,6 +31,24 @@
   unique: [[discovered_by, discovery_key]]
   list: {columns: [ci_name, ci_type, status, environment, criticality, owner, missing_since], sort: ci_name asc}
 
+- name: OfferingQuestion
+  label: Question
+  kind: child
+  fields:
+    - {name: label, type: data, required: true, in_list: true}
+    - {name: qtype, type: select, options: [Text, Number, Date, Yes/No, Choice], default: Text, required: true, in_list: true, label: Answered As}
+    - {name: required, type: check, in_list: true}
+    - {name: options, type: data, visible_if: "doc.qtype == 'Choice'", required_if: "doc.qtype == 'Choice'", description: "The choices, separated by commas"}
+    - {name: only_when, type: data, label: Only When Question, description: "The label of an earlier question; this one is asked only when that one has the answer below"}
+    - {name: only_when_answer, type: data, label: Has the Answer, required_if: "!isEmpty(doc.only_when)"}
+
+- name: RequestAnswer
+  label: Answer
+  kind: child
+  fields:
+    - {name: question, type: data, required: true, in_list: true}
+    - {name: answer, type: text, in_list: true}
+
 - name: ServiceOffering
   label: Service Offering
   label_plural: Service Catalog
@@ -45,8 +63,10 @@
     - {name: needs_approval, type: check, in_list: true}
     - {name: response_hours, type: int, required: true, default: 4, min: 1, in_list: true, label: Hours to Respond, description: "Working hours on the calendar itsm_hours"}
     - {name: fulfil_hours, type: int, required: true, default: 24, min: 1, in_list: true, label: Hours to Fulfil, description: "Working hours on the calendar itsm_hours"}
+    - {name: fulfilment_group, type: link, to: ItGroup, in_filter: true, description: "The group that fulfils requests for it: they are assigned to it as they are asked"}
+    - {name: questions, type: table, of: OfferingQuestion}
     - {name: active, type: check, default: true, in_list: true, in_filter: true}
-  list: {columns: [offering_name, service, needs_approval, fulfil_hours, active], sort: offering_name asc}
+  list: {columns: [offering_name, service, needs_approval, fulfil_hours, fulfilment_group, active], sort: offering_name asc}
 
 - name: CatalogRequest
   label: Catalog Request
@@ -65,7 +85,7 @@
     - {name: subcategory, type: link, to: ItCategory, in_filter: true}
     - {name: assignment_group, type: link, to: ItGroup, in_list: true, in_filter: true}
     - {name: assigned_to, type: email, in_list: true, in_filter: true, label: Assignee, description: "One of the assignment group's members"}
-    - {name: details, type: text}
+    - {name: answers, type: table, of: RequestAnswer, description: "The answers to the offering's questions"}
     - {name: status, type: select, options: [Submitted, Approved, Awaiting Caller, Rejected, Fulfilled, Cancelled], default: Submitted, read_only: true, no_copy: true, in_list: true, in_filter: true}
     - {name: respond_by, type: datetime, no_copy: true, label: Respond By}
     - {name: respond_state, type: select, options: [running, paused, met, met_late, breached], no_copy: true, in_filter: true, label: Response Target}
