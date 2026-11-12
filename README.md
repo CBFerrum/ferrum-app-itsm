@@ -81,6 +81,7 @@ item, and custodian and location kept as Assets moves it.
 
 | Version | Highlights |
 |---|---|
+| **0.2.15** | Rebuilt on the tuned design system: better menu icons, a lighter first page, a visible scroll cue, cleaner print. |
 | **0.2.14** | The redesigned interface: the upgraded design system, shaped loading, told-apart states. |
 | **0.2.13** | Its names in Arabic and Hindi. |
 | **0.2.12** | Sentences built in code are words too, in Arabic and Hindi. |
