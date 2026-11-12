@@ -63,13 +63,25 @@ IT service management for [Ferrum](https://github.com/CBFerrum/Ferrum):
   assignee told of an assignment); edit their wording and conditions under Automations.
 - **Reports.** Open incidents (by priority, group, category, assignee or age), target compliance,
   mean time to resolve, requests by catalogue item, and change success by type.
-- **Problems.** A known error has its workaround. A resolved problem says its root cause, and
-  resolves the incidents still open under it.
-- **Changes.** A change ends after it starts. A normal or emergency one has its back-out plan, and
-  shows its impact: every item that depends on or runs on what it changes. A standard change is
-  approved when submitted. A normal one needs a Change Manager who did not raise it, and is never
-  in a freeze; an emergency may be. No two approved changes touch one item at once. A submitted
-  change keeps its item, kind, window and back-out plan.
+- **Problems.** Incidents link to a problem. A known error has its workaround; marked visible, it is
+  published to the desk's search and the portal's suggestions. A resolved problem says its root
+  cause, and offers to resolve the incidents still open under it (or does, as the settings say).
+  An incident may be declared major, with a communication plan told to the service's subscribers
+  from message templates a workspace edits.
+- **Changes.** A change has a type (records, each with its path), a risk and impact from a
+  questionnaire kept as records, plans, back-out and test plans, and the services and items it
+  affects. Its approval is the platform's, a policy the package ships on the action: N of the
+  members of a group for a normal change, a smaller group for an emergency (reviewed afterwards),
+  one more for high risk, nobody for a standard change from an approved template. The setting
+  `change_approval` turns it on (new workspaces) or leaves the one-Change-Manager rule (upgraded
+  ones). The change calendar (report and route) flags collisions on a service or item and freezes,
+  which refuse or warn as the settings say. After implementation, a review with an outcome; a
+  failed change can open an incident.
+- **Catalog tasks.** An offering may name an approver group, and list steps for groups, run in
+  order or at once; a request gets a task per step and is fulfilled when they are done.
+- **Classes and relations.** Items have a class (with declared attributes) and relations a type
+  (records that say where a failure flows); the impact route follows them to a depth the settings
+  give. An outside inventory is described, pulled hourly, and shipped off.
 
 ## Develop
 
@@ -90,6 +102,10 @@ questions, notifications and reports. `tests/itsm_it.rs` walks an IT department:
 - discovery reports matched by name and key, a refused type, a loop and another source's item
   refused, and an item no longer reported marked and its owner told once.
 
+`tests/change_it.rs` (`FERRUM_ITSM_CHANGE_TEST_DATABASE_URL`) walks the change board, a workspace
+upgraded from 0.3, and `tests/service_it.rs` (`FERRUM_ITSM_SERVICE_TEST_DATABASE_URL`) problems,
+major incidents, catalogue tasks and classes.
+
 `tests/assets_it.rs` (`FERRUM_ITSM_ASSETS_TEST_DATABASE_URL`) runs the connector with ERP and
 Assets: items finding their laptop by serial number or naming it, an asset refused to a second
 item, and custodian and location kept as Assets moves it.
@@ -98,8 +114,8 @@ item, and custodian and location kept as Assets moves it.
 
 - Scanning networks or reading cloud accounts itself: tools do, and report to the intake.
 - Helpdesk tickets raised as incidents, and mail replies becoming comments.
-- A change advisory board of several approvers (a change is still decided by one Change Manager
-  other than its author), approval chains on requests, and change calendars.
+- Approval chains on requests beyond one group, tasks closed for a rejected request, and the
+  interface's own screens for the change board, the calendar, tasks and classes.
 - Telling an assignment group's members when an incident is assigned to the group.
 - An employee as the caller by link (the caller is an address), and the interface's own screens:
   the home still marks incidents by a field the targets replaced.
@@ -108,6 +124,7 @@ item, and custodian and location kept as Assets moves it.
 
 | Version | Highlights |
 |---|---|
+| **0.4.0** | The change board (change types, a risk questionnaire, N-of-M approval as a package policy, templates, calendar, freezes, review); known errors published to search and the portal; major incident communication; catalogue approver groups and fulfilment tasks; item classes, relation types and a bounded impact route. |
 | **0.3.0** | Callers, assignment groups and categories; the priority matrix as records; work notes and comments; targets on the platform's clock and a working calendar; employee self-service; catalogue items with their own questions; notifications; reports. |
 | **0.2.15** | Rebuilt on the tuned design system: better menu icons, a lighter first page, a visible scroll cue, cleaner print. |
 | **0.2.14** | The redesigned interface: the upgraded design system, shaped loading, told-apart states. |

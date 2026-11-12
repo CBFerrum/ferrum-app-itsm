@@ -1,8 +1,8 @@
 id: itsm
 name: IT Services
-version: 0.3.0
+version: 0.4.0
 publisher: cbferrum
-summary: "Configuration items and their dependencies, discovered or kept by hand, a service catalog, incidents by priority with their targets, problems, and changes with approval, conflicts, freezes and impact"
+summary: "Configuration items with classes and relations, a service catalog with approvals and tasks, incidents with targets, problems and known errors, and changes through a board, calendar and freezes"
 description: README.md
 categories: [support, productivity]
 license: AGPL-3.0-only
