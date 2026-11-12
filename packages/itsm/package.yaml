@@ -9,7 +9,7 @@ modules:
     label: IT Services
     icon: headset
     order: 57
-    items: [Incident, CatalogRequest, Problem, ItChange, ConfigurationItem, ServiceOffering, ChangeFreeze]
+    items: [Incident, CatalogRequest, Problem, ItChange, ConfigurationItem, ServiceOffering, ChangeFreeze, ItGroup, ItCategory, PriorityMatrix, ItsmSettings]
 
 roles:
   - name: Service Desk
@@ -22,6 +22,10 @@ roles:
       - {entity: ConfigurationItem, read: true}
       - {entity: ServiceOffering, read: true}
       - {entity: ChangeFreeze, read: true}
+      - {entity: ItGroup, read: true}
+      - {entity: ItCategory, read: true}
+      - {entity: PriorityMatrix, read: true}
+      - {entity: ItsmSettings, read: true}
   - name: Change Manager
     description: Approves or rejects changes and catalog requests, and sets freezes.
     permissions:
@@ -32,6 +36,10 @@ roles:
       - {entity: ServiceOffering, read: true}
       - {entity: Incident, read: true}
       - {entity: Problem, read: true}
+      - {entity: ItGroup, read: true}
+      - {entity: ItCategory, read: true}
+      - {entity: PriorityMatrix, read: true}
+      - {entity: ItsmSettings, read: true}
   - name: Configuration Manager
     description: Keeps the configuration items, their relations, and the service catalog.
     permissions:
@@ -39,6 +47,10 @@ roles:
       - {entity: ServiceOffering, read: true, write: true, create: true}
       - {entity: Incident, read: true}
       - {entity: ItChange, read: true}
+      - {entity: ItGroup, read: true, write: true, create: true}
+      - {entity: ItCategory, read: true, write: true, create: true}
+      - {entity: PriorityMatrix, read: true, write: true, create: true}
+      - {entity: ItsmSettings, read: true, write: true, create: true}
   - name: Discovery Agent
     description: "A discovery tool's account: reports what it finds to IT Services' discovery intake, and reads configuration items."
     permissions:
@@ -47,4 +59,34 @@ roles:
     description: Asks for things in the service catalog, and follows them.
     permissions:
       - {entity: ServiceOffering, read: true}
+      - {entity: ItCategory, read: true}
       - {entity: CatalogRequest, read: true, create: true, if_owner: true}
+
+seed:
+  - entity: PriorityMatrix
+    key: [impact, urgency]
+    records:
+      - {impact: High, urgency: High, priority: P1, response_time: PT15M, resolution_time: PT4H}
+      - {impact: High, urgency: Medium, priority: P2, response_time: PT1H, resolution_time: PT8H}
+      - {impact: Medium, urgency: High, priority: P2, response_time: PT1H, resolution_time: PT8H}
+      - {impact: High, urgency: Low, priority: P3, response_time: PT4H, resolution_time: P1D}
+      - {impact: Medium, urgency: Medium, priority: P3, response_time: PT4H, resolution_time: P1D}
+      - {impact: Low, urgency: High, priority: P3, response_time: PT4H, resolution_time: P1D}
+      - {impact: Medium, urgency: Low, priority: P4, response_time: PT8H, resolution_time: P3D}
+      - {impact: Low, urgency: Medium, priority: P4, response_time: PT8H, resolution_time: P3D}
+      - {impact: Low, urgency: Low, priority: P4, response_time: PT8H, resolution_time: P3D}
+  - entity: ItCategory
+    key: [category_name]
+    records:
+      - {category_name: Hardware}
+      - {category_name: Software}
+      - {category_name: Network}
+      - {category_name: Access}
+      - {category_name: Laptop, parent: "@ItCategory:category_name=Hardware"}
+      - {category_name: Printer, parent: "@ItCategory:category_name=Hardware"}
+      - {category_name: Application, parent: "@ItCategory:category_name=Software"}
+      - {category_name: Operating System, parent: "@ItCategory:category_name=Software"}
+      - {category_name: Connectivity, parent: "@ItCategory:category_name=Network"}
+      - {category_name: VPN, parent: "@ItCategory:category_name=Network"}
+      - {category_name: Account and Password, parent: "@ItCategory:category_name=Access"}
+      - {category_name: Permissions, parent: "@ItCategory:category_name=Access"}

@@ -2,7 +2,7 @@
 //!
 //! * A catalog request is due its offering's hours after it is asked; one that needs approval is
 //!   fulfilled only once approved, by a Change Manager who did not ask for it.
-//! * An incident's impact and urgency give its priority (the usual matrix), its priority the hours
+//! * An incident's impact and urgency give its priority through the Priority Matrix records, its priority the hours
 //!   it is to be resolved in, and a P1 on a critical item is major. Resolved, it says how; one
 //!   resolved late, or still open past its time, has breached, and stays breached.
 //! * A known error has its workaround; a problem resolved says its root cause and resolves the
@@ -15,21 +15,6 @@ use ferrum_domain::util::{elevated, id, s};
 use ferrum_kernel::{Ctx, Doc, DocHook, Error, HookCtx, Kernel, Result, Tx};
 use serde_json::{Value, json};
 use uuid::Uuid;
-
-/// The priority of an impact and an urgency.
-pub(crate) fn priority(impact: &str, urgency: &str) -> &'static str {
-    let rank = |v: &str| match v {
-        "High" => 0,
-        "Medium" => 1,
-        _ => 2,
-    };
-    match rank(impact) + rank(urgency) {
-        0 => "P1",
-        1 => "P2",
-        2 => "P3",
-        _ => "P4",
-    }
-}
 
 /// The hours a priority is to be resolved in.
 pub(crate) fn hours(priority: &str) -> i64 {
@@ -45,6 +30,23 @@ fn decides(ctx: &Ctx) -> bool {
     ctx.is_admin || ctx.roles.iter().any(|r| r == "Change Manager")
 }
 
+/// Who a record is about, and who works it: a caller left empty is the person raising it, and an
+/// assignee is one of the assignment group's members.
+async fn people(hc: &mut HookCtx<'_>, doc: &mut Doc) -> Result<()> {
+    if s(doc, "caller_email").is_none() && s(doc, "caller_name").is_none() && !hc.ctx.email.is_empty() {
+        doc.insert("caller_email".into(), json!(hc.ctx.email.to_lowercase()));
+    }
+    let (Some(group), Some(who)) = (id(doc, "assignment_group"), s(doc, "assigned_to")) else { return Ok(()) };
+    let member: bool =
+        sqlx::query_scalar("select exists (select 1 from e_it_group__members m where m.tenant_id = $1 and m.parent_id = $2 and lower(m.member) = lower($3))")
+            .bind(hc.ctx.tenant)
+            .bind(group)
+            .bind(who)
+            .fetch_one(&mut **hc.tx)
+            .await?;
+    if member { Ok(()) } else { Err(Error::field("assigned_to", "is not a member of the assignment group")) }
+}
+
 pub struct RequestHook;
 
 #[async_trait]
@@ -54,10 +56,11 @@ impl DocHook for RequestHook {
     }
 
     fn fills(&self) -> &'static [&'static str] {
-        &["requested_by", "due_at"]
+        &["requested_by", "caller_email", "due_at"]
     }
 
     async fn before_validate(&self, hc: &mut HookCtx<'_>, doc: &mut Doc) -> Result<()> {
+        people(hc, doc).await?;
         if s(doc, "requested_by").is_none() && !hc.ctx.email.is_empty() {
             doc.insert("requested_by".into(), json!(hc.ctx.email.to_lowercase()));
         }
@@ -137,11 +140,19 @@ impl DocHook for IncidentHook {
     }
 
     fn fills(&self) -> &'static [&'static str] {
-        &["priority", "major", "opened_at", "resolve_by", "resolved_at", "breached"]
+        &["matrix", "priority", "major", "caller_email", "opened_at", "resolve_by", "resolved_at", "breached"]
     }
 
     async fn before_validate(&self, hc: &mut HookCtx<'_>, doc: &mut Doc) -> Result<()> {
-        let p = priority(s(doc, "impact").unwrap_or("Medium"), s(doc, "urgency").unwrap_or("Medium"));
+        people(hc, doc).await?;
+        let row: Option<(Uuid, String)> = sqlx::query_as("select id, priority from e_priority_matrix where tenant_id = $1 and impact = $2 and urgency = $3")
+            .bind(hc.ctx.tenant)
+            .bind(s(doc, "impact").unwrap_or("Medium"))
+            .bind(s(doc, "urgency").unwrap_or("Medium"))
+            .fetch_optional(&mut **hc.tx)
+            .await?;
+        let (matrix, p) = row.ok_or_else(|| Error::field("impact", "the Priority Matrix has no row for this impact and urgency"))?;
+        let p = p.as_str();
         let opened = at(doc, "opened_at").unwrap_or_else(Utc::now);
         let due = opened + Duration::hours(hours(p));
         let critical: Option<String> = sqlx::query_scalar("select criticality from e_configuration_item where tenant_id = $1 and id = $2")
@@ -152,6 +163,7 @@ impl DocHook for IncidentHook {
             .flatten();
         let done = matches!(s(doc, "status"), Some("Resolved" | "Closed"));
         let resolved = if done { Some(at(doc, "resolved_at").unwrap_or_else(Utc::now)) } else { None };
+        doc.insert("matrix".into(), json!(matrix));
         doc.insert("priority".into(), json!(p));
         doc.insert("major".into(), json!(p == "P1" && critical.as_deref() == Some("Critical")));
         doc.insert("opened_at".into(), json!(opened.to_rfc3339()));
