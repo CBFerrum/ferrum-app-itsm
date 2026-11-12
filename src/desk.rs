@@ -279,7 +279,10 @@ impl DocHook for IncidentHook {
         doc.insert("matrix".into(), matrix);
         doc.insert("matrix_missing".into(), json!(missing));
         doc.insert("priority".into(), json!(p));
-        doc.insert("major".into(), json!(p == "P1" && critical.as_deref() == Some("Critical")));
+        doc.insert(
+            "major".into(),
+            json!((p == "P1" && critical.as_deref() == Some("Critical")) || doc.get("major_declared").and_then(Value::as_bool) == Some(true)),
+        );
         doc.insert("opened_at".into(), json!(opened.to_rfc3339()));
         doc.insert("resolved_at".into(), resolved.map_or(Value::Null, |r| json!(r.to_rfc3339())));
         Ok(())
@@ -302,20 +305,33 @@ impl DocHook for ProblemHook {
     }
 
     async fn validate(&self, _hc: &mut HookCtx<'_>, doc: &Doc) -> Result<()> {
+        let known = doc.get("known_error").and_then(Value::as_bool) == Some(true) || s(doc, "status") == Some("Known Error");
+        if known && s(doc, "workaround").is_none() {
+            return Err(Error::field("workaround", "a known error has its workaround"));
+        }
         match s(doc, "status") {
-            Some("Known Error") if s(doc, "workaround").is_none() => Err(Error::field("workaround", "a known error has its workaround")),
             Some("Resolved" | "Closed") if s(doc, "root_cause").is_none() => Err(Error::field("root_cause", "a resolved problem says its root cause")),
             _ => Ok(()),
         }
     }
 
     async fn after_save(&self, hc: &mut HookCtx<'_>, doc: &Doc, old: Option<&Doc>) -> Result<()> {
+        let problem = id(doc, "id").ok_or_else(|| Error::internal("a problem without an id"))?;
+        publish(hc, doc, problem).await?;
         let resolved = matches!(s(doc, "status"), Some("Resolved" | "Closed"));
         let was = old.is_some_and(|o| matches!(s(o, "status"), Some("Resolved" | "Closed")));
         if !resolved || was {
             return Ok(());
         }
-        let problem = id(doc, "id").ok_or_else(|| Error::internal("a problem without an id"))?;
+        // Which a workspace chooses (settings, Closing a Problem): the incidents still open under it are resolved with
+        // it (what a workspace upgraded from 0.3 keeps), or left for the button the problem offers.
+        let offer: Option<Option<String>> = sqlx::query_scalar("select problem_closes_incidents from e_itsm_settings where tenant_id = $1 limit 1")
+            .bind(hc.ctx.tenant)
+            .fetch_optional(&mut **hc.tx)
+            .await?;
+        if offer.flatten().as_deref() == Some("Offer") {
+            return Ok(());
+        }
         let open: Vec<Uuid> =
             sqlx::query_scalar("select id from e_incident where tenant_id = $1 and problem = $2 and status in ('New', 'In Progress', 'On Hold')")
                 .bind(hc.ctx.tenant)
@@ -329,4 +345,37 @@ impl DocHook for ProblemHook {
         }
         Ok(())
     }
+}
+
+/// Keeps the problem's published workaround in step: a known error whose workaround is marked visible has a
+/// `KnownError` row, published, that the service desk's search and the portal's suggestions find; unmarked (or no
+/// longer a known error) the row stays but is unpublished, so nothing the portal showed is lost to the desk.
+async fn publish(hc: &mut HookCtx<'_>, doc: &Doc, problem: Uuid) -> Result<()> {
+    let known = doc.get("known_error").and_then(Value::as_bool) == Some(true) || s(doc, "status") == Some("Known Error");
+    let show = known && doc.get("workaround_visible").and_then(Value::as_bool) == Some(true) && s(doc, "workaround").is_some();
+    let there: Option<Uuid> = sqlx::query_scalar("select id from e_known_error where tenant_id = $1 and problem = $2")
+        .bind(hc.ctx.tenant)
+        .bind(problem)
+        .fetch_optional(&mut **hc.tx)
+        .await?;
+    let system = elevated(hc.ctx);
+    let values =
+        json!({"title": s(doc, "title"), "service": id(doc, "ci"), "symptoms": s(doc, "symptoms"), "workaround": s(doc, "workaround"), "published": show});
+    match (there, show) {
+        (Some(row), _) => {
+            let mut v = obj(values);
+            if !show {
+                v.remove("workaround");
+                v.remove("title");
+            }
+            hc.kernel.update_tx(&system, hc.tx, "KnownError", row, v, None).await?;
+        }
+        (None, true) => {
+            let mut v = obj(values);
+            v.insert("problem".into(), json!(problem));
+            hc.kernel.insert_tx(&system, hc.tx, "KnownError", v).await?;
+        }
+        (None, false) => {}
+    }
+    Ok(())
 }

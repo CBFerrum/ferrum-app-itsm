@@ -5,6 +5,13 @@
     - {name: kind, type: select, options: [Depends On, Runs On, Connects To], default: Depends On, required: true, in_list: true}
     - {name: target, type: link, to: ConfigurationItem, required: true, in_list: true}
 
+- name: ItSubscriber
+  label: Subscriber
+  kind: child
+  fields:
+    - {name: subscriber, type: email, required: true, in_list: true, description: "Told when a major incident is declared, updated and resolved on this service"}
+    - {name: note, type: data}
+
 - name: ConfigurationItem
   label: Configuration Item
   label_plural: Configuration Items
@@ -22,6 +29,7 @@
     - {name: serial_number, type: data}
     - {name: location, type: data}
     - {name: relations, type: table, of: CiRelation}
+    - {name: subscribers, type: table, of: ItSubscriber, description: "People told of a major incident on this service"}
     - {name: notes, type: text}
     - {name: discovered_by, type: data, read_only: true, no_copy: true, in_filter: true, description: "The discovery source that reports it"}
     - {name: discovery_key, type: data, read_only: true, no_copy: true, description: "What its discovery source calls it"}
@@ -130,7 +138,11 @@
     - {name: matrix, type: link, to: PriorityMatrix, read_only: true, no_copy: true, label: Priority Matrix Row}
     - {name: matrix_missing, type: check, read_only: true, no_copy: true, in_filter: true, label: Matrix Had No Row, description: "The Priority Matrix had no row for this impact and urgency, so the incident took priority P3 and the four and 24 working hours of the shipped P3 row"}
     - {name: priority, type: select, options: [P1, P2, P3, P4], read_only: true, in_list: true, in_filter: true}
-    - {name: major, type: check, read_only: true, in_filter: true, description: "P1 on a critical item"}
+    - {name: major, type: check, read_only: true, in_filter: true, description: "P1 on a critical item, or declared a major incident"}
+    - {name: major_declared, type: check, read_only: true, no_copy: true, label: Declared Major, description: "Declared a major incident by hand (Declare Major)"}
+    - {name: comms_plan, type: text, no_copy: true, label: Communication Plan, description: "Who is told what, and how often, while it is major"}
+    - {name: major_manager, type: email, no_copy: true, label: Major Incident Manager}
+    - {name: next_update_by, type: datetime, no_copy: true, label: Next Update By}
     - {name: status, type: select, options: [New, In Progress, On Hold, Awaiting Caller, Resolved, Closed], default: New, in_list: true, in_filter: true, description: "Awaiting Caller stops the response and resolution clocks"}
     - {name: assignment_group, type: link, to: ItGroup, in_list: true, in_filter: true}
     - {name: assigned_to, type: email, in_list: true, in_filter: true, label: Assignee, description: "One of the assignment group's members"}
@@ -158,6 +170,42 @@
       params: [{name: note, type: text, label: What is still wrong, required: true}]
       refuse_if: [{when: "daysBetween(doc.resolved_at, today) > settings.ItsmSettings.reopen_days", message: "it was resolved too long ago to reopen; raise a new incident"}]
       effects: [{type: set_fields, values: {status: "'In Progress'"}}, {type: create_document, entity: ItNote, values: {incident: doc.id, visibility: "'Visible to Caller'", body: "'Not resolved: ' + params.note"}}]
+    - name: declare_major
+      label: Declare Major
+      permission: write
+      roles: [Service Desk, Change Manager]
+      condition: "!doc.major_declared && doc.status != 'Resolved' && doc.status != 'Closed'"
+      params:
+        - {name: plan, type: text, label: Communication plan, required: true}
+        - {name: manager, type: email, label: Major incident manager}
+        - {name: next_update_by, type: datetime, label: Next update by}
+      effects:
+        - {type: set_fields, values: {major_declared: "true", comms_plan: params.plan, major_manager: user.email}}
+        - {type: set_fields, when: "has(params.manager) && !isEmpty(params.manager)", values: {major_manager: params.manager}}
+        - {type: set_fields, when: "has(params.next_update_by)", values: {next_update_by: params.next_update_by}}
+        - {type: message, template: itsm.major_declared, to: ["links:service.subscribers.subscriber"]}
+    - name: major_update
+      label: Send Update
+      permission: write
+      roles: [Service Desk, Change Manager]
+      condition: "doc.major_declared && doc.status != 'Resolved' && doc.status != 'Closed'"
+      params:
+        - {name: update, type: text, label: Update, required: true}
+        - {name: next_update_by, type: datetime, label: Next update by}
+      effects:
+        - {type: message, template: itsm.major_update, to: ["links:service.subscribers.subscriber"], values: {update: params.update}}
+        - {type: create_document, entity: ItNote, values: {incident: doc.id, visibility: "'Visible to Caller'", body: params.update}}
+        - {type: set_fields, when: "has(params.next_update_by)", values: {next_update_by: params.next_update_by}}
+    - name: end_major
+      label: Resolve Major Incident
+      permission: write
+      roles: [Service Desk, Change Manager]
+      condition: "doc.major_declared && doc.status != 'Resolved' && doc.status != 'Closed'"
+      params:
+        - {name: resolution, type: text, label: How it was resolved, required: true}
+      effects:
+        - {type: set_fields, values: {status: "'Resolved'", resolution: params.resolution}}
+        - {type: message, template: itsm.major_resolved, to: ["links:service.subscribers.subscriber"], values: {resolution: params.resolution}}
   targets:
     - {name: respond, label: Response, calendar: itsm_hours, within: "isEmpty(doc.matrix) ? 'PT4H' : links.matrix.response_time", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status != 'New'", due_field: respond_by, state_field: respond_state}
     - {name: resolve, label: Resolution, calendar: itsm_hours, within: "isEmpty(doc.matrix) ? 'PT24H' : links.matrix.resolution_time", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status == 'Resolved' || doc.status == 'Closed'", due_field: resolve_by, state_field: resolve_state}
@@ -170,16 +218,52 @@
   kind: master
   module: itsm
   title_field: title
-  description: The cause behind incidents. A known error has its workaround; resolved, it says its root cause and resolves the incidents still open under it.
+  description: The cause behind incidents, which link to it. Marked a known error with its workaround, and the workaround marked visible, it is published to the service desk's search and to the portal's suggestions. Resolved, it says its root cause and resolves the incidents still open under it, or offers to.
   fields:
     - {name: title, type: data, required: true, in_list: true}
     - {name: ci, type: link, to: ConfigurationItem, in_list: true}
     - {name: description, type: text}
+    - {name: symptoms, type: text, description: "What people see: the words they would search for. Published with the workaround"}
     - {name: status, type: select, options: [Open, Known Error, Resolved, Closed], default: Open, in_list: true, in_filter: true}
+    - {name: known_error, type: check, in_list: true, in_filter: true, label: Known Error, description: "The cause is known and there is a workaround"}
     - {name: workaround, type: text}
+    - {name: workaround_visible, type: check, in_filter: true, label: Publish the Workaround, description: "A known error's workaround is published to the service desk's search and the portal's suggestions"}
     - {name: root_cause, type: text}
+  rules:
+    - {name: visible_needs_known_error, check: "!doc.workaround_visible || doc.known_error || doc.status == 'Known Error'", field: workaround_visible, message: "only a known error's workaround is published"}
+  actions:
+    - name: resolve_linked_incidents
+      label: Resolve Its Incidents
+      permission: write
+      condition: "doc.status == 'Resolved' || doc.status == 'Closed'"
+      confirm: "Resolve the incidents still open under this problem with its root cause?"
+      effects:
+        - type: for_each
+          entity: Incident
+          link: problem
+          where: "item.status == 'New' || item.status == 'In Progress' || item.status == 'On Hold'"
+          effects:
+            - {type: find, entity: Incident, by: {id: item.id}, update: {status: "'Resolved'", resolution: "'Resolved with ' + doc.number + ': ' + doc.root_cause"}}
   numbering: {template: "PRB-{YYYY}-{seq:5}"}
-  list: {columns: [number, title, ci, status], sort: created_at desc}
+  search_fields: [title, symptoms, workaround, root_cause]
+  list: {columns: [number, title, ci, status, known_error], sort: created_at desc}
+
+- name: KnownError
+  label: Known Error
+  label_plural: Known Errors
+  kind: master
+  module: itsm
+  title_field: title
+  description: A problem's workaround as the service desk and the portal find it. Made and kept in step with a known error whose workaround is marked visible; the desk may also write one by hand.
+  fields:
+    - {name: title, type: data, required: true, in_list: true}
+    - {name: problem, type: link, to: Problem, unique: true, in_list: true, description: "The problem it publishes the workaround of, if any"}
+    - {name: service, type: link, to: ConfigurationItem, in_list: true, in_filter: true}
+    - {name: symptoms, type: text}
+    - {name: workaround, type: text, required: true}
+    - {name: published, type: check, default: true, in_list: true, in_filter: true, description: "Shown in the portal's suggestions: only a published known error is"}
+  search_fields: [title, symptoms, workaround]
+  list: {columns: [title, problem, service, published], sort: created_at desc}
 
 - name: ChangeType
   label: Change Type
