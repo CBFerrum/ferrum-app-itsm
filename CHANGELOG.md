@@ -10,8 +10,9 @@ The service desk closes the gaps an audit against ServiceNow, Jira Service Manag
 - **Self-service.** The portal role IT Self Service: report an incident, ask from the catalog, follow their own with the visible comments, comment, confirm a resolution or reopen it within `ItsmSettings.reopen_days` (5).
 - **Catalogue forms.** An offering has questions (kind, required, choices, only-when) and a fulfilment group; a request carries `answers`, checked on the server. The generic `details` text is gone; what existing requests held is kept as an internal note (sql/002_request_details.sql).
 - **Notifications.** Seven automations are made once per workspace (`ensure_defaults`), for the caller (received, resolved, done, a comment meant for them) and the assignee; the workspace edits them under Automations.
+- **The home.** It marks an open incident whose response or resolution is breached (as the platform recorded it) or at risk (running, with three quarters of the time from opening to its due moment gone), in place of the removed `breached` check; Awaiting Caller counts as open. Arabic and Hindi names for the new words. Rebuilt with Ferrum-Frontend 5f178dd.
 - **Reports.** Open incidents, target compliance, mean time to resolve, requests by catalogue item, change success.
-- Not done: a change board of several approvers (item 6 of the audit), approval chains on requests, notifying a group's members, and the interface's own screens (the home still reads the removed `breached` field).
+- Not done: a change board of several approvers (item 6 of the audit), approval chains on requests, notifying a group's members, and the interface's own screens beyond the home.
 
 ## 0.2.15
 
