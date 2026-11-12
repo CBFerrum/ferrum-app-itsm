@@ -12,7 +12,7 @@ IT service management for [Ferrum](https://github.com/CBFerrum/Ferrum):
 |---|---|
 | 🛠️ App | `itsm`, native, in the server |
 | 🧩 Packages | `itsm` (needs only the platform's core); `itsm_assets`, the connector app `itsm-assets` with Assets |
-| 🖥️ Interface | its own, at `/itsm/`: open incidents by priority, requests waiting and changes coming up, and the records |
+| 🖥️ Interface | its own, at `/itsm/`: the desk (your queue and your team's, what waits for your decision, targets in trouble, major incidents), the change flow and calendar, problems and known errors, the major incident's messages, the catalog and its requests, configuration items and the impact walk, and the records |
 | 🔐 Roles | Service Desk, Change Manager, Configuration Manager, Requester, IT Self Service (for the portal), Discovery Agent (a tool's account) |
 | 📜 Licence | AGPL-3.0-only |
 
@@ -114,16 +114,17 @@ item, and custodian and location kept as Assets moves it.
 
 - Scanning networks or reading cloud accounts itself: tools do, and report to the intake.
 - Helpdesk tickets raised as incidents, and mail replies becoming comments.
-- Approval chains on requests beyond one group, tasks closed for a rejected request, and the
-  interface's own screens for the change board, the calendar, tasks and classes.
+- Approval chains on requests beyond one group, and tasks closed for a rejected request.
 - Telling an assignment group's members when an incident is assigned to the group.
-- An employee as the caller by link (the caller is an address), and the interface's own screens:
-  the home still marks incidents by a field the targets replaced.
+- An employee as the caller by link (the caller is an address).
+- A major incident's message shown as the workspace edited it: the screen shows the wording the
+  package ships, because no route gives a screen a workspace's own template.
 
 ## Changelog
 
 | Version | Highlights |
 |---|---|
+| **0.4.1** | The interface's own screens for 0.3 and 0.4: the desk with your queue and your team's, the change as a flow with its approval, the change calendar, problems and known errors, the major incident's messages, the catalog and its requests, configuration items and the impact walk. |
 | **0.4.0** | The change board (change types, a risk questionnaire, N-of-M approval as a package policy, templates, calendar, freezes, review); known errors published to search and the portal; major incident communication; catalogue approver groups and fulfilment tasks; item classes, relation types and a bounded impact route. |
 | **0.3.0** | Callers, assignment groups and categories; the priority matrix as records; work notes and comments; targets on the platform's clock and a working calendar; employee self-service; catalogue items with their own questions; notifications; reports. |
 | **0.2.15** | Rebuilt on the tuned design system: better menu icons, a lighter first page, a visible scroll cue, cleaner print. |
