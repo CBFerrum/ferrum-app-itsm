@@ -74,7 +74,8 @@ pub fn reports() -> Vec<Arc<dyn ReportSource>> {
     vec![Arc::new(reports::ItsmReports)]
 }
 
-/// Upkeep: the working calendar the targets count on made when absent; items their discovery source no
+/// Upkeep: the working calendar the targets count on made when absent, and once the notifications and seed rows a
+/// workspace upgraded from an earlier release lacks; items their discovery source no
 /// longer reports marked not seen; and, with the connector, what items show of their asset kept.
 pub async fn maintenance(k: &Kernel) -> Result<()> {
     maintenance_at(k, Utc::now()).await
@@ -94,7 +95,7 @@ pub async fn maintenance_at(k: &Kernel, now: DateTime<Utc>) -> Result<()> {
             }
             let connected = schema.packages.iter().any(|p| p == CONNECTOR_PACKAGE);
             let ctx = Ctx::system(tenant, schema);
-            defaults::ensure_automations(k, &ctx).await?;
+            defaults::ensure_defaults(k, &ctx).await?;
             let mut tx = k.db.tenant_tx(tenant).await?;
             defaults::ensure_calendar(&mut tx, tenant).await?;
             discovery::mark_missing(k, &ctx, &mut tx, now).await?;

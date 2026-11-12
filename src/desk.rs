@@ -249,7 +249,7 @@ impl DocHook for IncidentHook {
     }
 
     fn fills(&self) -> &'static [&'static str] {
-        &["matrix", "priority", "major", "caller_email", "opened_at", "resolved_at"]
+        &["matrix", "matrix_missing", "priority", "major", "caller_email", "opened_at", "resolved_at"]
     }
 
     async fn before_validate(&self, hc: &mut HookCtx<'_>, doc: &mut Doc) -> Result<()> {
@@ -261,7 +261,11 @@ impl DocHook for IncidentHook {
             .bind(s(doc, "urgency").unwrap_or("Medium"))
             .fetch_optional(&mut **hc.tx)
             .await?;
-        let (matrix, p) = row.ok_or_else(|| Error::field("impact", "the Priority Matrix has no row for this impact and urgency"))?;
+        // A matrix with no row for this pair (a workspace deleted it, or has not been given its rows yet) never
+        // refuses the incident: it takes P3, what the default impact and urgency (Medium, Medium) give in the shipped
+        // matrix, with that row's targets (the entity's `within` expressions), and says so in `matrix_missing`.
+        let missing = row.is_none();
+        let (matrix, p) = row.map_or((Value::Null, "P3".to_string()), |(m, p)| (json!(m), p));
         let p = p.as_str();
         let opened = at(doc, "opened_at").unwrap_or_else(Utc::now);
         let critical: Option<String> = sqlx::query_scalar("select criticality from e_configuration_item where tenant_id = $1 and id = $2")
@@ -272,7 +276,8 @@ impl DocHook for IncidentHook {
             .flatten();
         let done = matches!(s(doc, "status"), Some("Resolved" | "Closed"));
         let resolved = if done { Some(at(doc, "resolved_at").unwrap_or_else(Utc::now)) } else { None };
-        doc.insert("matrix".into(), json!(matrix));
+        doc.insert("matrix".into(), matrix);
+        doc.insert("matrix_missing".into(), json!(missing));
         doc.insert("priority".into(), json!(p));
         doc.insert("major".into(), json!(p == "P1" && critical.as_deref() == Some("Critical")));
         doc.insert("opened_at".into(), json!(opened.to_rfc3339()));
