@@ -3,8 +3,9 @@
 IT service management for [Ferrum](https://github.com/CBFerrum/Ferrum):
 - configuration items and what they depend on or run on, reported by discovery tools or kept by
   hand, and linked to the fixed assets they are where Assets is installed;
-- a service catalog, and requests approved by someone other than who asked;
-- incidents prioritised by impact and urgency, with their targets and breaches;
+- a service catalog whose items ask their own questions, and requests approved by someone other than who asked;
+- incidents with a caller, an assignment group and a category, prioritised by a matrix kept as records, with response and resolution targets on a working calendar;
+- work notes and comments the caller sees, an employee self-service role, notifications and reports;
 - problems, and changes with approval, conflicts, freezes and impact.
 
 | | |
@@ -12,7 +13,7 @@ IT service management for [Ferrum](https://github.com/CBFerrum/Ferrum):
 | 🛠️ App | `itsm`, native, in the server |
 | 🧩 Packages | `itsm` (needs only the platform's core); `itsm_assets`, the connector app `itsm-assets` with Assets |
 | 🖥️ Interface | its own, at `/itsm/`: open incidents by priority, requests waiting and changes coming up, and the records |
-| 🔐 Roles | Service Desk, Change Manager, Configuration Manager, Requester, Discovery Agent (a tool's account) |
+| 🔐 Roles | Service Desk, Change Manager, Configuration Manager, Requester, IT Self Service (for the portal), Discovery Agent (a tool's account) |
 | 📜 Licence | AGPL-3.0-only |
 
 ## Highlights
@@ -35,12 +36,33 @@ IT service management for [Ferrum](https://github.com/CBFerrum/Ferrum):
 - **Assets.** With the connector app `itsm-assets` (where Assets is installed too), an item names
   the fixed asset it is. It is found by serial number when none is named, and shows who holds it,
   where, and when its warranty ends, kept as Assets changes them. An asset is one item's.
-- **The catalog.** A request is due its offering's hours after it is asked. One that needs
-  approval is fulfilled only once a Change Manager approves it, and not the one who asked. A
-  rejection says why. Requesters see only their own requests.
-- **Incidents.** Impact and urgency give the priority (the usual matrix, P1 to P4), and the
-  priority the hours to resolve in: 4, 8, 24 or 72. A P1 on a critical item is major. A resolved
-  incident says how. One resolved late, or still open past its time, has breached, and stays so.
+- **The catalog.** An item asks its own questions (a label, an answer kind of text, number, date,
+  yes or no, or a choice, whether it is required, and an "only when" that names an earlier
+  question and the answer it wants). A request carries the answers, checked on the server against
+  its item and shown with their labels, and is assigned to the item's fulfilment group. Its
+  response and fulfilment times are the item's hours, working time on the calendar `itsm_hours`.
+  One that needs approval is fulfilled only once a Change Manager approves it, and not the one
+  who asked. A rejection says why.
+- **Incidents.** A caller (the person raising it when left empty, or the name and contact of
+  someone outside), who reported it if another, an assignment group and an assignee from it, a
+  category and subcategory, and the business service. Impact and urgency give the priority
+  through the Priority Matrix records (P1 to P4, seeded with the usual values), and the priority
+  its response and resolution times, as working time on `itsm_hours`: the platform's service
+  targets, paused while the incident is Awaiting Caller, the breach recorded once. The calendar is
+  made on first use as every hour of every day in UTC, which counts as the wall clock did; an
+  administrator edits it under Admin, Calendars. A P1 on a critical item is major. A resolved
+  incident says how, and its caller may confirm it or, for the days the settings give, reopen it.
+- **Notes.** Work notes (staff only) and comments (the caller sees them) on an incident, request,
+  problem or change, with author and time, in order. An author may correct one for the minutes
+  the settings give; then it is final, and only an administrator deletes one.
+- **Self-service.** The role IT Self Service, which an administrator gives to employees or people
+  outside, reports incidents, asks from the catalog, follows their own with the comments meant for
+  them, comments, and confirms or reopens a resolution. Records are theirs by the caller field.
+- **Notifications.** Seven automations are made once for a workspace (callers told of an incident
+  or request received, an incident resolved, a request done and a comment meant for them; an
+  assignee told of an assignment); edit their wording and conditions under Automations.
+- **Reports.** Open incidents (by priority, group, category, assignee or age), target compliance,
+  mean time to resolve, requests by catalogue item, and change success by type.
 - **Problems.** A known error has its workaround. A resolved problem says its root cause, and
   resolves the incidents still open under it.
 - **Changes.** A change ends after it starts. A normal or emergency one has its back-out plan, and
@@ -56,7 +78,9 @@ cargo test                       # needs FERRUM_ITSM_TEST_DATABASE_URL's databas
 cd ui && npm run build && npm run check
 ```
 
-`tests/itsm_it.rs` walks an IT department:
+`tests/desk_it.rs` walks the desk's people and records: callers, groups, categories and the matrix,
+notes read by permission, targets on a calendar a workspace edits, the portal role, catalogue
+questions, notifications and reports. `tests/itsm_it.rs` walks an IT department:
 - items and a loop refused;
 - requests approved and fulfilled;
 - incidents prioritised, resolved and breached;
@@ -73,14 +97,18 @@ item, and custodian and location kept as Assets moves it.
 ## Not yet
 
 - Scanning networks or reading cloud accounts itself: tools do, and report to the intake.
-- Helpdesk tickets raised as incidents, and incidents told to their reporters by mail.
-- Business hours, holidays and pauses in the targets (they run on the clock).
-- A change advisory board of several approvers, and change calendars.
+- Helpdesk tickets raised as incidents, and mail replies becoming comments.
+- A change advisory board of several approvers (a change is still decided by one Change Manager
+  other than its author), approval chains on requests, and change calendars.
+- Telling an assignment group's members when an incident is assigned to the group.
+- An employee as the caller by link (the caller is an address), and the interface's own screens:
+  the home still marks incidents by a field the targets replaced.
 
 ## Changelog
 
 | Version | Highlights |
 |---|---|
+| **0.3.0** | Callers, assignment groups and categories; the priority matrix as records; work notes and comments; targets on the platform's clock and a working calendar; employee self-service; catalogue items with their own questions; notifications; reports. |
 | **0.2.15** | Rebuilt on the tuned design system: better menu icons, a lighter first page, a visible scroll cue, cleaner print. |
 | **0.2.14** | The redesigned interface: the upgraded design system, shaped loading, told-apart states. |
 | **0.2.13** | Its names in Arabic and Hindi. |
