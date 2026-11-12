@@ -89,12 +89,15 @@ export function routeLines(d: Record<string, unknown>, type: Record<string, unkn
     case "Board":
     case "Emergency": {
       const m = members("board_members");
-      out.push(
-        d.route === "Emergency"
-          ? t("{n} of {m} members of {group} approve (the smaller emergency group): {who}", { n: String(d.quorum ?? 1), m: m.length, group, who: m.join(", ") })
-          : t("{n} of {m} members of {group} approve: {who}", { n: String(d.quorum ?? 1), m: m.length, group, who: m.join(", ") }),
-      );
-      if (d.second_look === true) out.push(t("Then one member of {group} approves it as well (high risk): {who}", { group: high, who: members("escalation_members").join(", ") }));
+      // A group too small to give its quorum is said apart (see `shortages`), not as "2 of 0".
+      if (m.length >= Number(d.quorum ?? 1))
+        out.push(
+          d.route === "Emergency"
+            ? t("{n} of {m} members of {group} approve (the smaller emergency group): {who}", { n: String(d.quorum ?? 1), m: m.length, group, who: m.join(", ") })
+            : t("{n} of {m} members of {group} approve: {who}", { n: String(d.quorum ?? 1), m: m.length, group, who: m.join(", ") }),
+        );
+      if (d.second_look === true && members("escalation_members").length)
+        out.push(t("Then one member of {group} approves it as well (high risk): {who}", { group: high, who: members("escalation_members").join(", ") }));
       if (type && type.path === "Pre-approved") out.push(t("A standard change without an approved template goes to the board its type names."));
       break;
     }
@@ -105,6 +108,28 @@ export function routeLines(d: Record<string, unknown>, type: Record<string, unkn
       break;
   }
   if (d.review_required === true) out.push(t("It is reviewed after it is implemented, before it can be closed."));
+  return out;
+}
+
+/** An approving group with fewer members than the type asks of it. The server refuses to submit such a change
+ *  (`submit_change`: "its approving group has N members and the type asks M of them"), so it is said before the button. */
+export interface Shortage {
+  group: string;
+  /** The group record, to link to it. */
+  groupId?: string;
+  have: number;
+  need: number;
+}
+
+export function shortages(d: Record<string, unknown>, type: Record<string, unknown> | undefined): Shortage[] {
+  if (d.route !== "Board" && d.route !== "Emergency") return [];
+  const titles = type?._titles as Record<string, string> | undefined;
+  const count = (k: string) => (Array.isArray(d[k]) ? (d[k] as unknown[]).length : 0);
+  const out: Shortage[] = [];
+  const need = Number(d.quorum ?? 1);
+  if (count("board_members") < need) out.push({ group: text(titles?.board) || t("the approving group"), groupId: text(type?.board) || undefined, have: count("board_members"), need });
+  if (d.second_look === true && !count("escalation_members"))
+    out.push({ group: text(titles?.high_risk_group) || t("the high-risk group"), groupId: text(type?.high_risk_group) || undefined, have: 0, need: 1 });
   return out;
 }
 

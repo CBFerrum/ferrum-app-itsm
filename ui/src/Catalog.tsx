@@ -11,7 +11,7 @@ import { Alert, Badge, Button, Field, FormSkeleton, PageHead, PageSplit, PageSta
 import { make, record, rows, run, type Row, text, titleOf } from "./data";
 import { when } from "./desk";
 import { answerRows, asked, problems, questionsOf, search, stepsOf, taskOrder } from "./offering";
-import { Ask, Await, Nav, Refused, TargetBadge, useRights } from "./ui";
+import { Ask, Await, Gaps, Nav, Refused, TargetBadge, useRights } from "./ui";
 import { ApprovalState, useAsked } from "./Approval";
 import { Suggest } from "./Suggest";
 
@@ -84,6 +84,7 @@ function Form({ offering }: { offering: Row }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [onBehalf, setOnBehalf] = useState("");
   const [wrong, setWrong] = useState<Record<string, string>>({});
+  const [turn, setTurn] = useState(0);
   const send = useMutation({
     mutationFn: () => make("CatalogRequest", { offering: offering.id, answers: answerRows(questions, answers), ...(onBehalf.trim() ? { caller_email: onBehalf.trim() } : {}) }),
     onSuccess: (made) => go(`/request/${made.id}`),
@@ -93,9 +94,11 @@ function Form({ offering }: { offering: Row }) {
     e.preventDefault();
     if (send.isPending) return;
     const bad = problems(questions, answers);
-    if (Object.keys(bad).length) return setWrong(bad);
+    if (Object.keys(bad).length) return (setWrong(bad), setTurn((n) => n + 1));
     send.mutate();
   };
+  const shown = questions.filter((q) => asked(q, answers));
+  const gaps = shown.flatMap((q, i) => (wrong[q.label] ? [{ id: `itsm-of-${i}`, label: q.label, message: wrong[q.label] }] : []));
   const steps = stepsOf(offering);
   const staff = !!rights && rights.write !== "none";
   return (
@@ -105,8 +108,9 @@ function Form({ offering }: { offering: Row }) {
           <h2 id="itsm-of-form" className="section-title">
             {t("Your request")}
           </h2>
+          <Gaps gaps={gaps} turn={turn} />
           {questions.length === 0 && <p className="muted">{t("Nothing more is asked: press Ask for it.")}</p>}
-          {questions.filter((q) => asked(q, answers)).map((q, i) => {
+          {shown.map((q, i) => {
             const id = `itsm-of-${i}`;
             const v = answers[q.label] ?? "";
             return (

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2
+
+Fixes from the first browser walk (interface only; the server is unchanged).
+
+- **A refused save is seen.** "Save draft" with a field missing looked like a dead button: the messages were far down the page. On a refused save (the form's own check or the server's refusal) the cursor now goes to the first field in error and the page scrolls to it, a summary at the top lists every field as a link to it, and the step that holds one is marked "Needs attention". The same in the catalog request, the problem form and the dialogs of the major incident (declare, update, resolve). Pressing again with the same refusal takes the focus again.
+- **A board with too few members.** The route panel said "2 of 0 members of Change Board approve". The seeded groups have no members, and the server refuses `submit_change` ("its approving group has N members and the type asks M of them to approve: add members to the group"; the same for a high-risk group with none). The panel now says the group has no members (or how many it has against how many are asked), who adds them (a link to the group's record, `/e/ItGroup/{id}`, where Configuration Manager and administrators may write), and "Save and submit" is not offered until then; the draft can still be saved.
+
 ## 0.4.1
 
 The interface's own screens for what 0.3 and 0.4 added (generic record forms still show every field). Rebuilt with Ferrum-Frontend as it is on its main.

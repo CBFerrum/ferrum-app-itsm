@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyDraft, flagLines, fromRow, inFreeze, levelOf, missing, routeLines, toBody } from "./draft";
+import { emptyDraft, flagLines, fromRow, inFreeze, levelOf, missing, routeLines, shortages, toBody } from "./draft";
 
 describe("a change as a draft", () => {
   it("is saved with its answers as rows, its moments as instants and empty plans left empty", () => {
@@ -50,5 +50,21 @@ describe("what the server works out", () => {
     expect(lines).toEqual(["Same window, same service or item: CHG-1, CHG-2", "In the freeze for Year end"]);
     expect(lines.map(inFreeze)).toEqual([false, true]);
     expect(flagLines(null)).toEqual([]);
+  });
+});
+
+describe("an approving group too small for its quorum", () => {
+  const type = { id: "t", path: "Board", board: "g1", high_risk_group: "g2", _titles: { board: "Change Board", high_risk_group: "Executives" } };
+  it("is a shortage, not '2 of 0'", () => {
+    const d = { route: "Board", quorum: 2, board_members: [] as string[], second_look: true, escalation_members: [] as string[] };
+    expect(shortages(d, type)).toEqual([
+      { group: "Change Board", groupId: "g1", have: 0, need: 2 },
+      { group: "Executives", groupId: "g2", have: 0, need: 1 },
+    ]);
+    expect(routeLines(d, type).join(" ")).not.toContain(" of 0 ");
+  });
+  it("is none when the members suffice or no one is asked", () => {
+    expect(shortages({ route: "Board", quorum: 2, board_members: ["a", "b"] }, type)).toEqual([]);
+    expect(shortages({ route: "Manager" }, type)).toEqual([]);
   });
 });
