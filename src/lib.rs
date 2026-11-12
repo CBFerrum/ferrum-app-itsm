@@ -120,16 +120,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_priority_matrix() {
-        use desk::{hours, priority};
-        assert_eq!(priority("High", "High"), "P1");
-        assert_eq!((priority("High", "Medium"), priority("Medium", "High")), ("P2", "P2"));
-        assert_eq!((priority("High", "Low"), priority("Medium", "Medium"), priority("Low", "High")), ("P3", "P3", "P3"));
-        assert_eq!((priority("Medium", "Low"), priority("Low", "Low")), ("P4", "P4"));
-        assert_eq!((hours("P1"), hours("P2"), hours("P3"), hours("P4")), (4, 8, 24, 72));
-    }
-
-    #[test]
     fn the_interface_is_a_release_the_platform_takes() {
         let m = ferrum_apps::AppManifest::parse(MANIFEST).expect("app.yaml");
         assert_eq!(m.routes(), vec![("itsm".to_string(), vec![])]);

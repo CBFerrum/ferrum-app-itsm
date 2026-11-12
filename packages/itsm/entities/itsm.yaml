@@ -56,7 +56,14 @@
   description: Someone asking for something in the catalog; approved first when the offering needs it, by someone other than who asked.
   fields:
     - {name: offering, type: link, to: ServiceOffering, required: true, in_list: true, in_filter: true}
-    - {name: requested_by, type: email, read_only: true, no_copy: true, in_list: true}
+    - {name: requested_by, type: email, read_only: true, no_copy: true, in_list: true, description: "Who asked for it"}
+    - {name: caller_email, type: email, in_list: true, in_filter: true, label: Caller, description: "Who it is for: a user's address (the person asking when left empty), or the contact of someone outside"}
+    - {name: caller_name, type: data, label: Caller Name, description: "For someone outside, who has no account"}
+    - {name: caller_phone, type: phone, label: Caller Phone}
+    - {name: category, type: link, to: ItCategory, in_filter: true}
+    - {name: subcategory, type: link, to: ItCategory, in_filter: true}
+    - {name: assignment_group, type: link, to: ItGroup, in_list: true, in_filter: true}
+    - {name: assigned_to, type: email, in_list: true, in_filter: true, label: Assignee, description: "One of the assignment group's members"}
     - {name: details, type: text}
     - {name: status, type: select, options: [Submitted, Approved, Rejected, Fulfilled, Cancelled], default: Submitted, read_only: true, no_copy: true, in_list: true, in_filter: true}
     - {name: due_at, type: datetime, read_only: true, no_copy: true, in_list: true}
@@ -68,6 +75,8 @@
     - {name: reject_request, label: Reject It, permission: write, condition: "doc.status == 'Submitted'", params: [{name: note, type: text, label: Why, required: true}]}
     - {name: fulfil, label: Fulfil It, permission: write, condition: "doc.status == 'Submitted' || doc.status == 'Approved'"}
     - {name: cancel_request, label: Cancel It, permission: write, condition: "doc.status == 'Submitted' || doc.status == 'Approved'"}
+  rules:
+    - {name: subcategory_of_category, check: "isEmpty(doc.subcategory) || (!isEmpty(doc.category) && links.subcategory.parent == doc.category)", field: subcategory, message: "must be a subcategory of the category"}
   numbering: {template: "REQ-{YYYY}-{seq:5}"}
   list: {columns: [number, offering, requested_by, status, due_at], sort: created_at desc}
 
@@ -77,25 +86,36 @@
   kind: master
   module: itsm
   title_field: title
-  description: Something broken. Its impact and urgency give its priority, and the priority its targets.
+  description: Something broken, reported by a caller. Its impact and urgency give its priority through the Priority Matrix, and the priority its response and resolution targets.
   fields:
     - {name: title, type: data, required: true, in_list: true}
     - {name: description, type: text}
+    - {name: caller_email, type: email, in_list: true, in_filter: true, label: Caller, description: "Who is affected: a user's address (filled from the person raising it when left empty), or the contact of someone outside"}
+    - {name: caller_name, type: data, label: Caller Name, description: "For someone outside, who has no account"}
+    - {name: caller_phone, type: phone, label: Caller Phone}
+    - {name: reported_by, type: email, label: Reported By, description: "Who reported it, when not the caller"}
+    - {name: category, type: link, to: ItCategory, in_filter: true}
+    - {name: subcategory, type: link, to: ItCategory, in_filter: true}
+    - {name: service, type: link, to: ConfigurationItem, in_filter: true, label: Business Service, description: "The business service affected"}
     - {name: ci, type: link, to: ConfigurationItem, in_list: true, in_filter: true, label: Affected Item}
     - {name: impact, type: select, options: [High, Medium, Low], default: Medium, required: true, in_list: true}
     - {name: urgency, type: select, options: [High, Medium, Low], default: Medium, required: true, in_list: true}
+    - {name: matrix, type: link, to: PriorityMatrix, read_only: true, no_copy: true, label: Priority Matrix Row}
     - {name: priority, type: select, options: [P1, P2, P3, P4], read_only: true, in_list: true, in_filter: true}
     - {name: major, type: check, read_only: true, in_filter: true, description: "P1 on a critical item"}
-    - {name: status, type: select, options: [New, In Progress, On Hold, Resolved, Closed], default: New, in_list: true, in_filter: true}
-    - {name: assigned_to, type: email, in_list: true, in_filter: true}
+    - {name: status, type: select, options: [New, In Progress, On Hold, Awaiting Caller, Resolved, Closed], default: New, in_list: true, in_filter: true, description: "Awaiting Caller stops the response and resolution clocks"}
+    - {name: assignment_group, type: link, to: ItGroup, in_list: true, in_filter: true}
+    - {name: assigned_to, type: email, in_list: true, in_filter: true, label: Assignee, description: "One of the assignment group's members"}
     - {name: problem, type: link, to: Problem}
     - {name: opened_at, type: datetime, read_only: true, no_copy: true}
     - {name: resolve_by, type: datetime, read_only: true, no_copy: true, in_list: true}
     - {name: resolution, type: text}
     - {name: resolved_at, type: datetime, read_only: true, no_copy: true}
     - {name: breached, type: check, read_only: true, no_copy: true, in_list: true, in_filter: true}
+  rules:
+    - {name: subcategory_of_category, check: "isEmpty(doc.subcategory) || (!isEmpty(doc.category) && links.subcategory.parent == doc.category)", field: subcategory, message: "must be a subcategory of the category"}
   numbering: {template: "INC-{YYYY}-{seq:5}"}
-  list: {columns: [number, title, priority, status, assigned_to, resolve_by, breached], sort: created_at desc}
+  list: {columns: [number, title, priority, status, assignment_group, assigned_to, resolve_by, breached], sort: created_at desc}
 
 - name: Problem
   label: Problem
