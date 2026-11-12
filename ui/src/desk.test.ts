@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { byPriority, changeLine, incidentFlags, priorityTone, requestLine, targetFlag } from "./Home";
+import { byPriority, changeLine, incidentFlags, inTrouble, majors, priorityTone, requestLine, split, targetFlag, updateOverdue } from "./desk";
 
 describe("the desk", () => {
   it("puts P1 first, then the soonest due", () => {
@@ -38,5 +38,35 @@ describe("the desk", () => {
     const i = { id: "i", opened_at: "2026-11-04T08:00:00Z", respond_state: "breached", respond_by: "2026-11-04T08:15:00Z", resolve_state: "running", resolve_by: "2026-11-04T12:00:00Z" };
     expect(incidentFlags(i, Date.parse("2026-11-04T11:30:00Z"))).toEqual({ response: "breached", resolution: "at_risk" });
     expect(incidentFlags({ id: "j", breached: true }, 0)).toEqual({ response: null, resolution: null });
+  });
+
+  it("splits what is mine from what my team has, and leaves out what another team has", () => {
+    const l = [
+      { id: "a", assigned_to: "Ana@x.test", assignment_group: "g1" },
+      { id: "b", assigned_to: "bo@x.test", assignment_group: "g1" },
+      { id: "c", assigned_to: null, assignment_group: "g1" },
+      { id: "d", assigned_to: "bo@x.test", assignment_group: "g2" },
+    ];
+    const { mine, team } = split(l, "ana@x.test", new Set(["g1"]));
+    expect(mine.map((r) => r.id)).toEqual(["a"]);
+    expect(team.map((r) => r.id)).toEqual(["b", "c"]);
+    expect(split(l, "zed@x.test", new Set()).team).toEqual([]);
+  });
+
+  it("lists the targets in trouble across incidents, requests and tasks, breached first", () => {
+    const now = Date.parse("2026-11-04T11:30:00Z");
+    const inc = { id: "i", opened_at: "2026-11-04T08:00:00Z", resolve_state: "running", resolve_by: "2026-11-04T12:00:00Z", respond_state: "met" };
+    const req = { id: "r", created_at: "2026-11-01T08:00:00Z", fulfil_state: "breached", due_at: "2026-11-03T08:00:00Z" };
+    const task = { id: "k", created_at: "2026-11-04T08:00:00Z", task_state: "paused", due_by: "2026-11-04T12:00:00Z" };
+    const hits = inTrouble([inc], [req], [task], now);
+    expect(hits.map((h) => [h.entity, h.flag])).toEqual([["CatalogRequest", "breached"], ["Incident", "at_risk"]]);
+  });
+
+  it("finds the major incidents and the ones whose next update is overdue", () => {
+    expect(majors([{ id: "a", major: true }, { id: "b", major: false }, { id: "c" }]).map((r) => r.id)).toEqual(["a"]);
+    const now = Date.parse("2026-11-04T10:00:00Z");
+    expect(updateOverdue({ id: "a", next_update_by: "2026-11-04T09:00:00Z" }, now)).toBe(true);
+    expect(updateOverdue({ id: "a", next_update_by: "2026-11-04T11:00:00Z" }, now)).toBe(false);
+    expect(updateOverdue({ id: "a" }, now)).toBe(false);
   });
 });
