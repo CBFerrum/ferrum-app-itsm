@@ -1,8 +1,12 @@
 //! What a workspace starts with that is not a package's own record: the working calendar its targets
-//! count on. It is the workspace's to edit (Admin, Calendars); it is made only when absent, so an
-//! edit is never undone.
+//! count on, and the notifications to callers and assignees (`automations.json`: automations like any
+//! other, with their wording as templates). Both are the workspace's to edit (Admin, Calendars and
+//! Automations); the calendar is made only when absent and the automations once, so no edit is undone.
 
-use ferrum_kernel::{Result, Tx};
+use crate::obj;
+use ferrum_domain::util::sys;
+use ferrum_kernel::{Ctx, Kernel, Result, Tx};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 /// The calendar the incident, request and approval targets name.
@@ -17,5 +21,33 @@ pub(crate) async fn ensure_calendar(tx: &mut Tx, tenant: Uuid) -> Result<()> {
         .bind(CALENDAR)
         .execute(&mut **tx)
         .await?;
+    Ok(())
+}
+
+/// The notifications as shipped: automations, each with its own id.
+const AUTOMATIONS: &str = include_str!("automations.json");
+
+/// Makes the automations once for the workspace (the settings record notes that they were made), as
+/// the system; a workspace that edits or switches one off, or deletes it, is not undone.
+pub(crate) async fn ensure_automations(k: &Kernel, ctx: &Ctx) -> Result<()> {
+    let system = sys(ctx);
+    let mut tx = k.db.tenant_tx(ctx.tenant).await?;
+    let settings = k.find_tx(&system, &mut tx, "ItsmSettings", &[], None, 1).await?;
+    tx.commit().await?;
+    if settings.first().and_then(|s| s.get("defaults_made")).and_then(Value::as_bool) == Some(true) {
+        return Ok(());
+    }
+    let list: Vec<Value> = serde_json::from_str(AUTOMATIONS).map_err(|e| ferrum_kernel::Error::internal(format!("automations.json: {e}")))?;
+    for a in list {
+        ferrum_kernel::automation::save(k, &system, &obj(a)).await?;
+    }
+    let mut tx = k.db.tenant_tx(ctx.tenant).await?;
+    match settings.first().and_then(|s| s.get("id")).and_then(Value::as_str).and_then(|i| i.parse().ok()) {
+        Some(id) => k.set_values_tx(&system, &mut tx, "ItsmSettings", id, obj(json!({"defaults_made": true}))).await?,
+        None => {
+            k.insert_tx(&system, &mut tx, "ItsmSettings", obj(json!({"defaults_made": true}))).await?;
+        }
+    }
+    tx.commit().await?;
     Ok(())
 }

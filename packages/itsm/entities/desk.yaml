@@ -5,6 +5,7 @@
   fields:
     - {name: note_edit_minutes, type: int, label: Minutes a Note May Be Corrected, default: 5, min: 0, max: 1440, description: "Its author may correct a work note or comment for this long after posting it; then it is final. 0 = never"}
     - {name: reopen_days, type: int, label: Days a Resolved Incident May Be Reopened, default: 5, min: 0, max: 365, description: "A caller who finds a resolved incident is not resolved may reopen it for this many days"}
+    - {name: defaults_made, type: check, read_only: true, hidden: true, no_copy: true, description: "The notifications IT Services starts with are made once; after that they are the workspace's"}
 
 - name: ItGroupMember
   label: Group Member
