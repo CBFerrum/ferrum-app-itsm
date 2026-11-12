@@ -15,7 +15,7 @@ import { emptyDraft, flagLines, fromRow, inFreeze, levelOf, missing, routeLines,
 import { Ask, Await, Nav, Refused, useRights, useSettings, type Param } from "./ui";
 import { when } from "./desk";
 
-const LEVELS: Level[] = ["Low", "Medium", "High"];
+const LEVELS = (): [Level, string][] => [["Low", t("Low")], ["Medium", t("Medium")], ["High", t("High")]];
 
 const useTypes = () => useQuery({ queryKey: ["itsm", "types"], queryFn: () => rows("ChangeType", [], { titles: true, sort: "type_name asc" }).then((r) => r.filter((x) => x.active !== false)), staleTime: 60_000 });
 
@@ -222,8 +222,10 @@ function Editor({ row }: { row?: Row }) {
               {!answered && (
                 <Field label={t("Risk, by hand")} htmlFor="itsm-ch-risklevel" hint={t("Answer the questions and it is worked out from them.")}>
                   <select id="itsm-ch-risklevel" className="select" value={d.risk} onChange={(e) => set("risk", e.target.value as Level)}>
-                    {LEVELS.map((l) => (
-                      <option key={l}>{l}</option>
+                    {LEVELS().map(([l, word]) => (
+                      <option key={l} value={l}>
+                        {word}
+                      </option>
                     ))}
                   </select>
                 </Field>
@@ -357,7 +359,7 @@ function View({ row }: { row: Row }) {
     review: {
       title: t("Review the change"),
       params: [
-        { name: "outcome", label: t("Outcome"), kind: "select", options: ["Successful", "Successful with Issues", "Failed"], required: true },
+        { name: "outcome", label: t("Outcome"), kind: "select", options: [["Successful", t("Successful")], ["Successful with Issues", t("Successful with issues")], ["Failed", t("Failed")]], required: true },
         { name: "note", label: t("What we learned"), kind: "text", hint: t("A failed change says what happened.") },
         { name: "open_incident", label: t("Open an incident for it"), kind: "check" },
       ],

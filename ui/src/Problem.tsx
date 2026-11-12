@@ -128,8 +128,10 @@ function Form({ problem }: { problem: Row }) {
       </Field>
       <Field label={t("Status")} htmlFor="itsm-pb-status">
         <select id="itsm-pb-status" className="select" value={d.status} onChange={(e) => set("status", e.target.value)}>
-          {["Open", "Known Error", "Resolved", "Closed"].map((s) => (
-            <option key={s}>{s}</option>
+          {([["Open", t("Open")], ["Known Error", t("Known error")], ["Resolved", t("Resolved")], ["Closed", t("Closed")]] as const).map(([s, word]) => (
+            <option key={s} value={s}>
+              {word}
+            </option>
           ))}
         </select>
       </Field>

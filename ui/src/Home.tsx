@@ -83,9 +83,9 @@ function Quick() {
   const level = (id: string, label: string, value: string, set: (v: string) => void) => (
     <Field label={label} htmlFor={id}>
       <select id={id} className="select" value={value} onChange={(e) => set(e.target.value)}>
-        {["High", "Medium", "Low"].map((l) => (
+        {([["High", t("High")], ["Medium", t("Medium")], ["Low", t("Low")]] as const).map(([l, word]) => (
           <option key={l} value={l}>
-            {l}
+            {word}
           </option>
         ))}
       </select>

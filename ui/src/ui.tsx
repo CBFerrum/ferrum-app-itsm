@@ -6,27 +6,31 @@ import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { useLocation } from "react-router";
 import { ApiError, fromZonedInput, isolate, refusal, t } from "@ferrum/client";
 import { Alert, Badge, Button, ButtonLink, Dialog, Field, FormSkeleton, LoadFailed, type Tone } from "@ferrum/kit";
-import { useMetaIndex, type Perms } from "@ferrum/records";
+import { can, useMetaIndex, type Perms } from "@ferrum/records";
 import { rows } from "./data";
 
-/** The screens of the app, one press apart on every page. */
+/** The screens of the app, one press apart on every page; one the person may not read anything of is not offered. */
 export function Nav() {
   const here = useLocation().pathname;
-  const items: [string, string, string][] = [
-    ["/", t("Desk"), "home"],
-    ["/e/ItChange", t("Changes"), "list"],
-    ["/calendar", t("Change calendar"), "calendar"],
-    ["/problems", t("Problems"), "alert"],
-    ["/catalog", t("Catalog"), "store"],
-    ["/items", t("Configuration items"), "apps"],
+  const meta = useMetaIndex();
+  const reads = (entity: string) => can(meta.data?.entities.find((e) => e.name === entity)?.permissions, "read");
+  const items: [string, string, string, string | null][] = [
+    ["/", t("Desk"), "home", null],
+    ["/e/ItChange", t("Changes"), "list", "ItChange"],
+    ["/calendar", t("Change calendar"), "calendar", "ItChange"],
+    ["/problems", t("Problems"), "alert", "Problem"],
+    ["/catalog", t("Catalog"), "store", null],
+    ["/items", t("Configuration items"), "apps", "ConfigurationItem"],
   ];
   return (
     <nav className="row" aria-label={t("IT Services")}>
-      {items.map(([to, label, icon]) => (
-        <ButtonLink key={to} to={to} size="sm" icon={icon} variant={(to === "/" ? here === "/" : here.startsWith(to)) ? "default" : "ghost"}>
-          {label}
-        </ButtonLink>
-      ))}
+      {items
+        .filter(([, , , entity]) => !entity || reads(entity))
+        .map(([to, label, icon]) => (
+          <ButtonLink key={to} to={to} size="sm" icon={icon} variant={(to === "/" ? here === "/" : here.startsWith(to)) ? "default" : "ghost"}>
+            {label}
+          </ButtonLink>
+        ))}
     </nav>
   );
 }
@@ -63,7 +67,8 @@ export interface Param {
   label: string;
   kind?: "text" | "line" | "select" | "check" | "moment" | "email";
   required?: boolean;
-  options?: string[];
+  /** The stored value, or the stored value with the words a person reads for it. */
+  options?: (string | [string, string])[];
   hint?: string;
 }
 
@@ -141,11 +146,14 @@ export function Ask({
         return (
           <select id={id} className="select" value={String(v ?? "")} onChange={(e) => set(p.name, e.target.value)}>
             <option value="">{p.required ? t("Choose…") : "—"}</option>
-            {(p.options ?? []).map((o) => (
-              <option key={o} value={o}>
-                {isolate(o)}
-              </option>
-            ))}
+            {(p.options ?? []).map((o) => {
+              const [value, label] = typeof o === "string" ? [o, o] : o;
+              return (
+                <option key={value} value={value}>
+                  {isolate(label)}
+                </option>
+              );
+            })}
           </select>
         );
       case "moment":

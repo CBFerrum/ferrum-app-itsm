@@ -1,6 +1,6 @@
 id: itsm
 name: IT Services
-version: 0.4.0
+version: 0.4.1
 publisher: cbferrum
 summary: "Configuration items with classes and relations, a service catalog with approvals and tasks, incidents with targets, problems and known errors, and changes through a board, calendar and freezes"
 description: README.md
@@ -12,7 +12,7 @@ runtime: native
 platform: ">=0.3.2, <0.4"
 packages: [itsm]
 uninstall: ask
-# Its own interface at /itsm/: open incidents by priority, and changes coming up.
+# Its own interface at /itsm/: the desk, the change flow and calendar, problems, the catalog and the configuration items.
 ui:
   dist: ui/dist
 contributes:
@@ -28,8 +28,8 @@ contributes:
     - {id: itsm, package: itsm, path: "itsm/e/{entity}/{id}", list: "itsm/e/{entity}"}
   shell.create:
     - {id: incident, label: Incident, path: itsm/e/Incident/new, entity: Incident}
-    - {id: request, label: Catalog Request, path: itsm/e/CatalogRequest/new, entity: CatalogRequest}
-    - {id: change, label: Change, path: itsm/e/ItChange/new, entity: ItChange}
+    - {id: request, label: Catalog Request, path: itsm/catalog, entity: CatalogRequest}
+    - {id: change, label: Change, path: itsm/change/new, entity: ItChange}
   # The kind of notification IT Services sends ({app}.{id}, as src/discovery.rs sends it); each
   # person chooses how it reaches them.
   shell.notification:
