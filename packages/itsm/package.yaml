@@ -9,7 +9,7 @@ modules:
     label: IT Services
     icon: headset
     order: 57
-    items: [Incident, CatalogRequest, Problem, ItChange, ConfigurationItem, ServiceOffering, ChangeFreeze, ItGroup, ItCategory, PriorityMatrix, ItsmSettings]
+    items: [Incident, CatalogRequest, Problem, ItChange, ConfigurationItem, ServiceOffering, ChangeFreeze, ItGroup, ItCategory, PriorityMatrix, ItNote, ItsmSettings]
 
 roles:
   - name: Service Desk
@@ -22,6 +22,7 @@ roles:
       - {entity: ConfigurationItem, read: true}
       - {entity: ServiceOffering, read: true}
       - {entity: ChangeFreeze, read: true}
+      - {entity: ItNote, read: true, write: true, create: true}
       - {entity: ItGroup, read: true}
       - {entity: ItCategory, read: true}
       - {entity: PriorityMatrix, read: true}
@@ -36,6 +37,7 @@ roles:
       - {entity: ServiceOffering, read: true}
       - {entity: Incident, read: true}
       - {entity: Problem, read: true}
+      - {entity: ItNote, read: true, write: true, create: true}
       - {entity: ItGroup, read: true}
       - {entity: ItCategory, read: true}
       - {entity: PriorityMatrix, read: true}
@@ -51,6 +53,16 @@ roles:
       - {entity: ItCategory, read: true, write: true, create: true}
       - {entity: PriorityMatrix, read: true, write: true, create: true}
       - {entity: ItsmSettings, read: true, write: true, create: true}
+  - name: IT Self Service
+    description: "For employees and people outside IT, given to them by an administrator: report an incident, ask for something in the catalog, follow their own with the comments meant for them, add a comment, and confirm or reject a resolution."
+    portal: true
+    permissions:
+      - {entity: Incident, read: true, create: true, via: caller_email, actions: [confirm_resolution, reject_resolution]}
+      - {entity: CatalogRequest, read: true, create: true, via: caller_email}
+      - {entity: ItNote, read: true, write: true, create: true, via: incident.caller_email, where: {visibility: Visible to Caller}}
+      - {entity: ItNote, read: true, write: true, create: true, via: request.caller_email, where: {visibility: Visible to Caller}}
+      - {entity: ServiceOffering, read: true}
+      - {entity: ItCategory, read: true}
   - name: Discovery Agent
     description: "A discovery tool's account: reports what it finds to IT Services' discovery intake, and reads configuration items."
     permissions:
