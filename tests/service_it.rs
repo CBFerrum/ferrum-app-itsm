@@ -25,6 +25,7 @@ struct T {
     admin: Ctx,
 }
 
+#[allow(dead_code)]
 impl T {
     async fn new(k: &Arc<Kernel>, slug: &'static str) -> T {
         let tenant = k
@@ -186,4 +187,77 @@ async fn scenario() {
         assert_eq!(to.len(), 2, "{template} went to both subscribers: {sent:?}");
         assert!(to.contains(&"ops@acme.test") && to.contains(&"boss@acme.test"));
     }
+
+    // ───────────── 3. catalog items: an approver group, then tasks for groups in order ─────────────
+    let mgr = t.user("mgr@acme.test", &["Change Manager"]).await;
+    let (m1, _m2, m3) =
+        (t.user("m1@acme.test", &["Requester"]).await, t.user("m2@acme.test", &["Requester"]).await, t.user("m3@acme.test", &["Requester"]).await);
+    let managers = uid(&t
+        .insert(
+            &cfg,
+            "ItGroup",
+            json!({"group_name": "Managers", "members": [{"member": "m1@acme.test"}, {"member": "m2@acme.test"}, {"member": "m3@acme.test"}]}),
+        )
+        .await["id"]);
+    let accounts = uid(&t.insert(&cfg, "ItGroup", json!({"group_name": "Accounts", "members": [{"member": "acc@acme.test"}]})).await["id"]);
+    let kit = uid(&t.insert(&cfg, "ItGroup", json!({"group_name": "Kit", "members": [{"member": "kit@acme.test"}]})).await["id"]);
+    let hire = uid(&t
+        .insert(
+            &cfg,
+            "ServiceOffering",
+            json!({"offering_name": "New hire", "needs_approval": true, "approver_group": managers.to_string(), "approvals_needed": 2,
+        "steps": [{"step_name": "Create the accounts", "sequence": 10, "assignment_group": accounts.to_string(), "target_hours": 4},
+                  {"step_name": "Prepare the laptop", "sequence": 20, "assignment_group": kit.to_string(), "target_hours": 24},
+                  {"step_name": "Prepare the desk", "sequence": 20, "assignment_group": kit.to_string(), "target_hours": 24}]}),
+        )
+        .await["id"]);
+    let r = uid(&t.insert(&desk, "CatalogRequest", json!({"offering": hire.to_string()})).await["id"]);
+    assert_eq!(t.get("CatalogRequest", r).await["route"], "Group");
+    assert!(t.k.list(&t.admin, "RequestTask", &Default::default()).await.unwrap().rows.is_empty(), "no task before approval");
+    refused(t.act(&m1, "CatalogRequest", r, "approve_request", Value::Null).await, "forbidden", "not permitted");
+    let asked = t.act(&desk, "CatalogRequest", r, "approve_request", Value::Null).await.unwrap();
+    assert!(asked["_approval"].is_object(), "{asked}");
+    t.decide(&m1, "CatalogRequest", r, true).await.unwrap();
+    assert_eq!(t.get("CatalogRequest", r).await["status"], "Submitted", "one of two");
+    t.decide(&m3, "CatalogRequest", r, true).await.unwrap();
+    assert_eq!(t.get("CatalogRequest", r).await["status"], "Approved");
+    let tasks = t.k.list(&t.admin, "RequestTask", &Default::default()).await.unwrap().rows;
+    let by = |n: &str| tasks.iter().find(|x| x["step_name"] == n).map(|x| uid(&x["id"])).unwrap();
+    let state = |n: &str| tasks.iter().find(|x| x["step_name"] == n).map(|x| x["status"].as_str().unwrap().to_string()).unwrap();
+    assert_eq!((state("Create the accounts").as_str(), state("Prepare the laptop").as_str()), ("Open", "Waiting"));
+    let first = t.get("RequestTask", by("Create the accounts")).await;
+    assert!(!first["due_by"].is_null() && first["task_state"] == "running", "an open task's clock runs: {first:?}");
+    refused(t.act(&desk, "CatalogRequest", r, "fulfil", Value::Null).await, "invalid", "tasks are not all done");
+    t.act(&desk, "RequestTask", by("Create the accounts"), "complete_task", Value::Null).await.unwrap();
+    for n in ["Prepare the laptop", "Prepare the desk"] {
+        assert_eq!(t.get("RequestTask", by(n)).await["status"], "Open", "{n} opens when the step before is done");
+        let g = t.get("RequestTask", by(n)).await;
+        assert!(!g["due_by"].is_null(), "and has its target: {:?} {:?}", g["task_state"], g["due_by"]);
+    }
+    t.act(&desk, "RequestTask", by("Prepare the laptop"), "complete_task", Value::Null).await.unwrap();
+    assert_eq!(t.get("CatalogRequest", r).await["status"], "Approved");
+    t.act(&desk, "RequestTask", by("Prepare the desk"), "complete_task", Value::Null).await.unwrap();
+    assert_eq!(t.get("CatalogRequest", r).await["status"], "Fulfilled", "the request closes when its tasks do");
+    assert_eq!(t.get("RequestTask", by("Prepare the desk")).await["task_state"], "met");
+    assert_eq!(t.get("CatalogRequest", r).await["fulfil_state"], "met", "and its own target is met");
+    // An offering with no approver group asks one Change Manager, as before; one with no approval and steps run at once.
+    let old = uid(&t.insert(&cfg, "ServiceOffering", json!({"offering_name": "Software", "needs_approval": true})).await["id"]);
+    let ro = uid(&t.insert(&desk, "CatalogRequest", json!({"offering": old.to_string()})).await["id"]);
+    assert_eq!(t.get("CatalogRequest", ro).await["route"], "Manager");
+    refused(t.act(&desk, "CatalogRequest", ro, "approve_request", Value::Null).await, "forbidden", "a Change Manager decides");
+    t.act(&mgr, "CatalogRequest", ro, "approve_request", Value::Null).await.expect("one Change Manager, as before");
+    assert_eq!(t.get("CatalogRequest", ro).await["status"], "Approved");
+    t.set(&cfg, "ServiceOffering", old, json!({"needs_approval": false, "steps_run": "At Once",
+        "steps": [{"step_name": "A", "sequence": 10, "assignment_group": accounts.to_string()}, {"step_name": "B", "sequence": 20, "assignment_group": kit.to_string()}]})).await.unwrap();
+    let rn = uid(&t.insert(&desk, "CatalogRequest", json!({"offering": old.to_string()})).await["id"]);
+    let ts =
+        t.k.list(
+            &t.admin,
+            "RequestTask",
+            &ListQuery { filters: ferrum_kernel::query::parse_filters(&json!({"request": rn.to_string()})).unwrap(), ..Default::default() },
+        )
+        .await
+        .unwrap()
+        .rows;
+    assert!(ts.len() == 2 && ts.iter().all(|x| x["status"] == "Open"), "all open at once: {ts:?}");
 }

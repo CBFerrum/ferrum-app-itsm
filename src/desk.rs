@@ -154,7 +154,20 @@ impl DocHook for RequestHook {
     }
 
     fn fills(&self) -> &'static [&'static str] {
-        &["requested_by", "caller_email", "assignment_group"]
+        &["requested_by", "caller_email", "assignment_group", "route", "quorum", "approver_members"]
+    }
+
+    async fn after_save(&self, hc: &mut HookCtx<'_>, doc: &Doc, old: Option<&Doc>) -> Result<()> {
+        // A request that needs no approval has its tasks as it is made; one that does, when it is approved.
+        let needs: Option<bool> = sqlx::query_scalar("select coalesce(needs_approval, false) from e_service_offering where tenant_id = $1 and id = $2")
+            .bind(hc.ctx.tenant)
+            .bind(id(doc, "offering"))
+            .fetch_optional(&mut **hc.tx)
+            .await?;
+        if old.is_none() && needs != Some(true) && s(doc, "status") == Some("Submitted") {
+            make_tasks(hc, doc).await?;
+        }
+        Ok(())
     }
 
     async fn before_validate(&self, hc: &mut HookCtx<'_>, doc: &mut Doc) -> Result<()> {
@@ -173,6 +186,31 @@ impl DocHook for RequestHook {
         }
         if s(doc, "requested_by").is_none() && !hc.ctx.email.is_empty() {
             doc.insert("requested_by".into(), json!(hc.ctx.email.to_lowercase()));
+        }
+        // Who approves it, as the offering says when this request is made: its approver group (N of M) or, left
+        // as it was before release 0.4, one Change Manager. Taken once, while it waits for approval to begin.
+        if matches!(s(doc, "status"), Some("Submitted") | None) {
+            let off: Option<(Option<bool>, Option<Uuid>, Option<i64>)> =
+                sqlx::query_as("select needs_approval, approver_group, approvals_needed from e_service_offering where tenant_id = $1 and id = $2")
+                    .bind(hc.ctx.tenant)
+                    .bind(id(doc, "offering"))
+                    .fetch_optional(&mut **hc.tx)
+                    .await?;
+            let (needs, group, n) = off.unwrap_or_default();
+            let group = group.filter(|_| needs == Some(true));
+            let who: Vec<String> = match group {
+                Some(g) => {
+                    sqlx::query_scalar("select lower(member) from e_it_group__members where tenant_id = $1 and parent_id = $2 order by idx")
+                        .bind(hc.ctx.tenant)
+                        .bind(g)
+                        .fetch_all(&mut **hc.tx)
+                        .await?
+                }
+                None => vec![],
+            };
+            doc.insert("route".into(), json!(if group.is_some() { "Group" } else { "Manager" }));
+            doc.insert("quorum".into(), group.map_or(Value::Null, |_| json!(n.unwrap_or(1))));
+            doc.insert("approver_members".into(), group.map_or(Value::Null, |_| json!(who)));
         }
         Ok(())
     }
@@ -212,14 +250,20 @@ impl DocHook for RequestHook {
                 if !needs {
                     return Err(Error::invalid("this offering needs no approval"));
                 }
-                if !decides(hc.ctx) {
+                // With the offering's approver group the platform has asked and been answered before this runs.
+                let by_policy = name == "approve_request" && s(doc, "route") == Some("Group");
+                if !by_policy && !decides(hc.ctx) {
                     return Err(Error::Forbidden("a Change Manager decides a request".into()));
                 }
-                if mine {
+                if !by_policy && mine {
                     return Err(Error::Forbidden("a request is decided by someone other than who asked".into()));
                 }
                 if name == "approve_request" {
-                    json!({"status": "Approved", "decided_by": hc.ctx.email})
+                    hc.kernel
+                        .set_values_tx(&elevated(hc.ctx), hc.tx, "CatalogRequest", request, obj(json!({"status": "Approved", "decided_by": hc.ctx.email})))
+                        .await?;
+                    make_tasks(hc, doc).await?;
+                    return Ok(Some(json!({"status": "Approved"})));
                 } else {
                     let why = note.ok_or_else(|| Error::field("note", "a rejection says why"))?;
                     json!({"status": "Rejected", "decided_by": hc.ctx.email, "decision_note": why})
@@ -228,6 +272,14 @@ impl DocHook for RequestHook {
             "fulfil" => {
                 if needs && s(doc, "status") != Some("Approved") {
                     return Err(Error::invalid("this request waits for its approval"));
+                }
+                let undone: i64 = sqlx::query_scalar("select count(*) from e_request_task where tenant_id = $1 and request = $2 and status <> 'Done'")
+                    .bind(hc.ctx.tenant)
+                    .bind(request)
+                    .fetch_one(&mut **hc.tx)
+                    .await?;
+                if undone > 0 {
+                    return Err(Error::invalid("its tasks are not all done: the request is fulfilled when they are"));
                 }
                 json!({"status": "Fulfilled", "fulfilled_at": Utc::now().to_rfc3339()})
             }
@@ -378,4 +430,87 @@ async fn publish(hc: &mut HookCtx<'_>, doc: &Doc, problem: Uuid) -> Result<()> {
         (None, false) => {}
     }
     Ok(())
+}
+
+/// The tasks of a request, made once from its offering's steps: the first sequence number opens (all of them, when the
+/// offering runs its steps at once), the rest wait. Nothing is made twice (a request that has tasks is left as it is).
+async fn make_tasks(hc: &mut HookCtx<'_>, request: &Doc) -> Result<()> {
+    let Some(rid) = id(request, "id") else { return Ok(()) };
+    let made: bool = sqlx::query_scalar("select exists (select 1 from e_request_task where tenant_id = $1 and request = $2)")
+        .bind(hc.ctx.tenant)
+        .bind(rid)
+        .fetch_one(&mut **hc.tx)
+        .await?;
+    if made {
+        return Ok(());
+    }
+    let at_once: Option<Option<String>> = sqlx::query_scalar("select steps_run from e_service_offering where tenant_id = $1 and id = $2")
+        .bind(hc.ctx.tenant)
+        .bind(id(request, "offering"))
+        .fetch_optional(&mut **hc.tx)
+        .await?;
+    let at_once = at_once.flatten().as_deref() == Some("At Once");
+    let steps: Vec<(String, Option<i64>, Option<Uuid>, Option<i64>, Option<String>)> = sqlx::query_as(
+        "select step_name, sequence, assignment_group, target_hours, instructions from e_service_offering__steps where tenant_id = $1 and parent_id = $2 order by sequence, idx",
+    )
+    .bind(hc.ctx.tenant)
+    .bind(id(request, "offering"))
+    .fetch_all(&mut **hc.tx)
+    .await?;
+    let first = steps.first().and_then(|s| s.1);
+    let system = elevated(hc.ctx);
+    for (name, seq, group, hours, how) in steps {
+        let status = if at_once || seq == first { "Open" } else { "Waiting" };
+        hc.kernel
+            .insert_tx(
+                &system,
+                hc.tx,
+                "RequestTask",
+                obj(json!({"request": rid, "step_name": name, "sequence": seq.unwrap_or(10), "assignment_group": group, "target_hours": hours.unwrap_or(8), "instructions": how, "status": status})),
+            )
+            .await?;
+    }
+    Ok(())
+}
+
+/// A task is done by its group; when none of the request's tasks is left, the request is fulfilled, and when the
+/// offering runs its steps in order the next sequence number opens.
+pub struct TaskHook;
+
+#[async_trait]
+impl DocHook for TaskHook {
+    fn name(&self) -> &'static str {
+        "itsm.task"
+    }
+
+    async fn action(&self, hc: &mut HookCtx<'_>, name: &str, doc: &Doc, _params: &Value) -> Result<Option<Value>> {
+        if name != "complete_task" {
+            return Ok(None);
+        }
+        let (task, request) = (
+            id(doc, "id").ok_or_else(|| Error::internal("a task without an id"))?,
+            id(doc, "request").ok_or_else(|| Error::internal("a task without a request"))?,
+        );
+        let system = elevated(hc.ctx);
+        hc.kernel.update_tx(&system, hc.tx, "RequestTask", task, obj(json!({"status": "Done", "done_at": Utc::now().to_rfc3339()})), None).await?;
+        let left: Vec<(Uuid, String, Option<i64>)> =
+            sqlx::query_as("select id, status, sequence from e_request_task where tenant_id = $1 and request = $2 and status <> 'Done' order by sequence")
+                .bind(hc.ctx.tenant)
+                .bind(request)
+                .fetch_all(&mut **hc.tx)
+                .await?;
+        if left.is_empty() {
+            hc.kernel
+                .update_tx(&system, hc.tx, "CatalogRequest", request, obj(json!({"status": "Fulfilled", "fulfilled_at": Utc::now().to_rfc3339()})), None)
+                .await?;
+            return Ok(Some(json!({"status": "Done", "request": "Fulfilled"})));
+        }
+        if !left.iter().any(|t| t.1 == "Open") {
+            let next = left.first().and_then(|t| t.2);
+            for (t, _, _) in left.iter().filter(|t| t.2 == next) {
+                hc.kernel.update_tx(&system, hc.tx, "RequestTask", *t, obj(json!({"status": "Open"})), None).await?;
+            }
+        }
+        Ok(Some(json!({"status": "Done"})))
+    }
 }

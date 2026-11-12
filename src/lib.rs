@@ -51,6 +51,7 @@ pub fn register(hooks: &mut HookRegistry) {
         .register("ConfigurationItem", Arc::new(cmdb::CiHook))
         .register("CatalogRequest", Arc::new(desk::RequestHook))
         .register("ServiceOffering", Arc::new(desk::OfferingHook))
+        .register("RequestTask", Arc::new(desk::TaskHook))
         .register("Incident", Arc::new(desk::IncidentHook))
         .register("Problem", Arc::new(desk::ProblemHook))
         .register("ItNote", Arc::new(notes::NoteHook))
