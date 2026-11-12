@@ -100,6 +100,14 @@ impl Site for DiscoverySite {
             let out = crate::reports::ItsmReports.run(k, user, "itsm_change_calendar", &params).await?;
             return Ok(SiteResponse::json(200, &out));
         }
+        // Known errors that fit what someone typed, as the person may read them (a portal person: the published ones):
+        // `GET /suggest?q=`, for the incident form and the portal.
+        if (req.method.as_str(), req.path.trim_matches('/')) == ("GET", "suggest") {
+            let q = ferrum_kernel::ListQuery { search: req.query.get("q").and_then(Value::as_str).map(str::to_string), limit: Some(5), ..Default::default() };
+            let found = k.list(user, "KnownError", &q).await?;
+            let rows: Vec<Value> = found.rows.iter().map(|r| json!({"id": r["id"], "title": r["title"], "workaround": r["workaround"]})).collect();
+            return Ok(SiteResponse::json(200, &json!({"suggestions": rows})));
+        }
         if (req.method.as_str(), req.path.trim_matches('/')) != ("POST", "discovery") {
             return Err(Error::NotFound(format!("IT Services endpoint {} {}", req.method, req.path)));
         }

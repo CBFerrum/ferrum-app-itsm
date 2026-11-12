@@ -30,6 +30,7 @@ jobs:
       FERRUM_ITSM_TEST_DATABASE_URL: postgres://ferrum:ferrum@localhost:5432/ferrum_itsm_test
       FERRUM_ITSM_ASSETS_TEST_DATABASE_URL: postgres://ferrum:ferrum@localhost:5432/ferrum_itsm_assets_test
       FERRUM_ITSM_CHANGE_TEST_DATABASE_URL: postgres://ferrum:ferrum@localhost:5432/ferrum_itsm_change_test
+      FERRUM_ITSM_SERVICE_TEST_DATABASE_URL: postgres://ferrum:ferrum@localhost:5432/ferrum_itsm_service_test
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -44,6 +45,7 @@ jobs:
           create database ferrum_itsm_test owner ferrum;
           create database ferrum_itsm_assets_test owner ferrum;
           create database ferrum_itsm_change_test owner ferrum;
+          create database ferrum_itsm_service_test owner ferrum;
           SQL
       - run: cargo fmt -- --check
       - run: cargo clippy --all-targets -- -D warnings
