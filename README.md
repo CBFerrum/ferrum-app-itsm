@@ -124,6 +124,7 @@ item, and custodian and location kept as Assets moves it.
 
 | Version | Highlights |
 |---|---|
+| **0.4.2** | Fixes from the first browser walk: a refused save moves to the first field in error with a linked summary and the step marked (change, catalog request, problem, major incident), and a board with too few members is said plainly with a link to its group instead of "2 of 0". |
 | **0.4.1** | The interface's own screens for 0.3 and 0.4: the desk with your queue and your team's, the change as a flow with its approval, the change calendar, problems and known errors, the major incident's messages, the catalog and its requests, configuration items and the impact walk. |
 | **0.4.0** | The change board (change types, a risk questionnaire, N-of-M approval as a package policy, templates, calendar, freezes, review); known errors published to search and the portal; major incident communication; catalogue approver groups and fulfilment tasks; item classes, relation types and a bounded impact route. |
 | **0.3.0** | Callers, assignment groups and categories; the priority matrix as records; work notes and comments; targets on the platform's clock and a working calendar; employee self-service; catalogue items with their own questions; notifications; reports. |

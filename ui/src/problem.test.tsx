@@ -87,6 +87,8 @@ describe("a problem", () => {
     await act(async () => byText(host, "button", "Save")?.click());
     await until(() => (host.textContent ?? "").includes("a known error has its workaround"));
     expect(host.querySelector("#itsm-pb-work-error")?.textContent).toBe("a known error has its workaround");
+    expect(host.textContent).toContain("Not saved. These need attention:");
+    expect(document.activeElement?.id).toBe("itsm-pb-work");
   });
 });
 
@@ -127,6 +129,8 @@ describe("a major incident", () => {
     await act(async () => byText(host, "button", "Declare it")?.click());
     await settle();
     expect(host.textContent).toContain("is needed");
+    expect(document.activeElement?.id).toBe("ask-plan");
+    expect(host.textContent).toContain("Not saved. These need attention:");
     expect(server.seen.some((s) => s.line.endsWith("declare_major"))).toBe(false);
   });
 

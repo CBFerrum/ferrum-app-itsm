@@ -73,6 +73,48 @@ describe("a change as a draft", () => {
   });
 });
 
+describe("a refused save is seen", () => {
+  it("moves to the first field in error, lists each at the top as a link, and marks the step that holds it", async () => {
+    const server = fakeServer([["GET", "/api/v1/ItChange/ch1", { ...draft, backout_plan: null, planned_start: null, planned_end: null }], ...common]);
+    const host = await draw(<ChangeRoute />, "/change/:id", "/change/ch1");
+    await act(async () => byText(host, "button", "Save draft")?.click());
+    await settle();
+    expect(server.seen.some((s) => s.line.startsWith("PATCH"))).toBe(false);
+    expect(document.activeElement?.id).toBe("itsm-ch-back");
+    const summary = host.querySelector('[role="alert"]');
+    expect(summary?.textContent).toContain("A normal or emergency change says how it is undone");
+    expect(summary?.querySelector('a[href="#itsm-ch-start"]')?.textContent).toBe("Starts");
+    expect(host.querySelector("#itsm-ch-plans")?.textContent).toContain("Needs attention");
+    expect(host.querySelector("#itsm-ch-what")?.textContent).not.toContain("Needs attention");
+  });
+});
+
+describe("an approving group with too few members", () => {
+  // The server's own words on submit: "its approving group has 0 members and the type asks 2 of them to approve".
+  const board = { ...draft, route: "Board", quorum: 2, board_members: [] as string[], second_look: false, review_required: false, window_flags: null };
+  const withGroup = common.map((r) => (r[1] === "/api/v1/ChangeType" ? ["GET", "/api/v1/ChangeType", { rows: [{ id: "t-normal", type_name: "Normal", path: "Board", quorum: 2, board: "g1", _titles: { board: "Change Board" } }] }] : r)) as typeof common;
+
+  it("says plainly that the board has no members, who adds them, links the group, and keeps Save and submit from being pressed", async () => {
+    fakeServer([["POST", "/api/v1/ItChange/_calc", board], ["GET", "/api/v1/ItChange/ch1", draft], ...withGroup, ["GET", "/api/meta", { entities: [{ name: "ItChange", permissions: { read: "all" } }, { name: "ItGroup", permissions: { read: "all" } }] }]]);
+    const host = await draw(<ChangeRoute />, "/change/:id", "/change/ch1");
+    await settle(500);
+    const text = host.textContent ?? "";
+    expect(text).toContain("Change Board has no members, so no one can approve this change yet.");
+    expect(text).toContain("An administrator or a Configuration Manager adds them on the group.");
+    expect(text).not.toContain("2 of 0");
+    expect(host.querySelector('a[href="/e/ItGroup/g1"]')).toBeTruthy();
+    expect((byText(host, "button", "Save and submit") as HTMLButtonElement).disabled).toBe(true);
+    expect((byText(host, "button", "Save draft") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("says how many it has when it has some but fewer than the type asks", async () => {
+    fakeServer([["POST", "/api/v1/ItChange/_calc", { ...board, board_members: ["a@x.test"] }], ["GET", "/api/v1/ItChange/ch1", draft], ...withGroup]);
+    const host = await draw(<ChangeRoute />, "/change/:id", "/change/ch1");
+    await settle(500);
+    expect(host.textContent).toContain("Change Board has 1 members and this type asks 2 of them to approve.");
+  });
+});
+
 const submitted = { ...draft, status: "Submitted", route: "Board", quorum: 2 };
 const asked = {
   id: "ap1",

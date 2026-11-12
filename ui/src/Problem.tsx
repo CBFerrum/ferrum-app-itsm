@@ -11,7 +11,7 @@ import { LinkInput } from "@ferrum/records";
 import { change, record, rows, run, type Row, text, titleOf } from "./data";
 import { priorityTone } from "./desk";
 import { bodyOfProblem, draftOf, FILTERS, offersResolve, openByProblem, OPEN_INCIDENT, showOf, stillOpen, type ProblemDraft, type Show } from "./problems";
-import { Ask, Await, Nav, Refused, useRights, useSettings } from "./ui";
+import { Ask, Await, Gaps, Nav, Refused, useRights, useSettings } from "./ui";
 
 // ── the list ──
 
@@ -103,16 +103,29 @@ function Form({ problem }: { problem: Row }) {
   const qc = useQueryClient();
   const [d, setD] = useState<ProblemDraft>(() => draftOf(problem));
   const set = <K extends keyof ProblemDraft>(k: K, v: ProblemDraft[K]) => setD((cur) => ({ ...cur, [k]: v }));
+  const [turn, setTurn] = useState(0);
   const save = useMutation({
     mutationFn: () => change("Problem", problem.id, bodyOfProblem(d), problem.version),
     onSuccess: () => {
       toast(t("Saved"));
       void qc.invalidateQueries({ queryKey: ["itsm"] });
     },
+    onError: () => setTurn((n) => n + 1),
   });
+  const spots: [string, string, string][] = [
+    ["title", "itsm-pb-title", t("Title")],
+    ["symptoms", "itsm-pb-symptoms", t("Symptoms")],
+    ["root_cause", "itsm-pb-cause", t("Root cause")],
+    ["workaround", "itsm-pb-work", t("Workaround")],
+    ["workaround_visible", "itsm-pb-visible", t("Publish the workaround")],
+  ];
   // The server names the field it refused: its words go under it.
   const said = (field: string) => (save.error instanceof ApiError ? save.error.fields.find((f) => f.field === field)?.message : undefined);
   const loose = save.error instanceof ApiError && save.error.fields.length && save.error.fields.every((f) => f.field in d) ? null : save.error;
+  const gaps = spots.flatMap(([f, id, label]) => {
+    const message = save.error instanceof ApiError ? save.error.fields.find((x) => x.field === f)?.message : undefined;
+    return message ? [{ id, label, message }] : [];
+  });
   const known = d.known_error || d.status === "Known Error";
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -123,6 +136,7 @@ function Form({ problem }: { problem: Row }) {
       <h2 id="itsm-pb-form" className="section-title">
         {t("The problem")}
       </h2>
+      <Gaps gaps={gaps} turn={turn} />
       <Field label={t("Title")} htmlFor="itsm-pb-title" required error={said("title")}>
         <input id="itsm-pb-title" className="input" value={d.title} onChange={(e) => set("title", e.target.value)} />
       </Field>
@@ -150,7 +164,7 @@ function Form({ problem }: { problem: Row }) {
       </Field>
       <div className="stack">
         <label className="check-field">
-          <input type="checkbox" checked={d.workaround_visible} onChange={(e) => set("workaround_visible", e.target.checked)} />
+          <input id="itsm-pb-visible" type="checkbox" checked={d.workaround_visible} onChange={(e) => set("workaround_visible", e.target.checked)} />
           {t("Publish the workaround")}
         </label>
         {said("workaround_visible") && <p className="field-error">{isolate(said("workaround_visible") ?? "")}</p>}
