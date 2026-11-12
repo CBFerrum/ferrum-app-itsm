@@ -49,6 +49,8 @@ const router = createBrowserRouter(
       errorElement: <RouteError />,
       children: [
         { index: true, lazy: () => import("./Home").then((m) => ({ Component: m.Home })) },
+        { path: "change/:id", lazy: () => import("./Change").then((m) => ({ Component: m.ChangeRoute })) },
+        { path: "calendar", lazy: () => import("./Calendar").then((m) => ({ Component: m.CalendarRoute })) },
         { path: "e/:entity", lazy: page("ListView") },
         { path: "e/:entity/:id", lazy: page("FormView") },
         { path: "r/:name", lazy: page("ReportView") },
