@@ -67,6 +67,32 @@
     - {name: resolution_duration, check: "doc.resolution_time.matches('^P([0-9]+D)?(T([0-9]+H)?([0-9]+M)?)?$') && size(doc.resolution_time) > 2", field: resolution_time, message: "is an ISO 8601 duration, such as PT30M, PT4H or P2D"}
   list: {columns: [impact, urgency, priority, response_time, resolution_time], sort: priority asc}
 
+- name: RequestTask
+  label: Request Task
+  label_plural: Request Tasks
+  kind: master
+  module: itsm
+  title_field: step_name
+  description: One step of fulfilling a catalog request, for a group, made from the offering's steps once the request is approved. The request is fulfilled when its tasks are done.
+  fields:
+    - {name: request, type: link, to: CatalogRequest, required: true, in_list: true, in_filter: true}
+    - {name: step_name, type: data, required: true, in_list: true, label: Step}
+    - {name: sequence, type: int, default: 10, in_list: true}
+    - {name: assignment_group, type: link, to: ItGroup, in_list: true, in_filter: true}
+    - {name: assigned_to, type: email, in_list: true, in_filter: true, label: Assignee, description: "One of the group's members"}
+    - {name: instructions, type: text}
+    - {name: status, type: select, options: [Waiting, Open, Done], default: Waiting, read_only: true, no_copy: true, in_list: true, in_filter: true, description: "Waiting: an earlier step is not done. The clock runs only while it is Open"}
+    - {name: target_hours, type: int, default: 8, min: 1}
+    - {name: due_by, type: datetime, no_copy: true, in_list: true, label: Due}
+    - {name: task_state, type: select, options: [running, paused, met, met_late, breached], no_copy: true, in_filter: true, label: Target}
+    - {name: done_at, type: datetime, read_only: true, no_copy: true}
+  actions:
+    - {name: complete_task, label: Done, permission: write, condition: "doc.status == 'Open'"}
+  targets:
+    - {name: complete, label: Completion, calendar: itsm_hours, within: "'PT' + string(doc.target_hours) + 'H'", pause_when: "doc.status == 'Waiting'", met_when: "doc.status == 'Done'", due_field: due_by, state_field: task_state}
+  numbering: {template: "TASK-{YYYY}-{seq:5}"}
+  list: {columns: [number, step_name, request, assignment_group, assigned_to, status, due_by, task_state], sort: created_at desc}
+
 - name: ItNote
   label: Note
   label_plural: Notes

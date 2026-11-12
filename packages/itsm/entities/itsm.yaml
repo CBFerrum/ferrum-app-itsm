@@ -57,6 +57,16 @@
     - {name: question, type: data, required: true, in_list: true}
     - {name: answer, type: text, in_list: true}
 
+- name: FulfilmentStep
+  label: Fulfilment Step
+  kind: child
+  fields:
+    - {name: step_name, type: data, required: true, in_list: true, label: Step}
+    - {name: sequence, type: int, default: 10, in_list: true, description: "Steps are done in this order when the offering runs them in order; steps with the same number open together"}
+    - {name: assignment_group, type: link, to: ItGroup, in_list: true, label: Group}
+    - {name: target_hours, type: int, default: 8, min: 1, in_list: true, label: Hours to Do It, description: "Working hours on the calendar itsm_hours, from when the task opens"}
+    - {name: instructions, type: text}
+
 - name: ServiceOffering
   label: Service Offering
   label_plural: Service Catalog
@@ -72,7 +82,11 @@
     - {name: response_hours, type: int, required: true, default: 4, min: 1, in_list: true, label: Hours to Respond, description: "Working hours on the calendar itsm_hours"}
     - {name: fulfil_hours, type: int, required: true, default: 24, min: 1, in_list: true, label: Hours to Fulfil, description: "Working hours on the calendar itsm_hours"}
     - {name: fulfilment_group, type: link, to: ItGroup, in_filter: true, description: "The group that fulfils requests for it: they are assigned to it as they are asked"}
+    - {name: approver_group, type: link, to: ItGroup, in_filter: true, description: "When it needs approval and this is set, its members decide, the number below of them, instead of one Change Manager. Left empty, nothing changes"}
+    - {name: approvals_needed, type: int, default: 1, min: 1, max: 5, label: Approvals Needed}
     - {name: questions, type: table, of: OfferingQuestion}
+    - {name: steps, type: table, of: FulfilmentStep, label: Fulfilment Steps, description: "The tasks made for each request once it is approved (or at once, when it needs none), for the groups named"}
+    - {name: steps_run, type: select, options: [In Order, At Once], default: In Order, label: Steps Run, description: "In Order: a step opens when those before it are done. At Once: all open together"}
     - {name: active, type: check, default: true, in_list: true, in_filter: true}
   list: {columns: [offering_name, service, needs_approval, fulfil_hours, fulfilment_group, active], sort: offering_name asc}
 
@@ -94,6 +108,9 @@
     - {name: assignment_group, type: link, to: ItGroup, in_list: true, in_filter: true}
     - {name: assigned_to, type: email, in_list: true, in_filter: true, label: Assignee, description: "One of the assignment group's members"}
     - {name: answers, type: table, of: RequestAnswer, description: "The answers to the offering's questions"}
+    - {name: route, type: select, options: [Manager, Group], read_only: true, no_copy: true, description: "Who approves it: one Change Manager, or the members of the offering's approver group"}
+    - {name: quorum, type: int, read_only: true, no_copy: true}
+    - {name: approver_members, type: json, read_only: true, no_copy: true, hidden: true}
     - {name: status, type: select, options: [Submitted, Approved, Awaiting Caller, Rejected, Fulfilled, Cancelled], default: Submitted, read_only: true, no_copy: true, in_list: true, in_filter: true}
     - {name: respond_by, type: datetime, no_copy: true, label: Respond By}
     - {name: respond_state, type: select, options: [running, paused, met, met_late, breached], no_copy: true, in_filter: true, label: Response Target}

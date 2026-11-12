@@ -9,7 +9,7 @@ modules:
     label: IT Services
     icon: headset
     order: 57
-    items: [Incident, CatalogRequest, Problem, ItChange, ChangeType, ChangeTemplate, RiskQuestion, ConfigurationItem, ServiceOffering, KnownError, ChangeFreeze, ItGroup, ItCategory, PriorityMatrix, ItNote, ItsmSettings, report:itsm_open_incidents, report:itsm_target_compliance, report:itsm_time_to_resolve, report:itsm_requests_by_item, report:itsm_change_success, report:itsm_change_calendar]
+    items: [Incident, CatalogRequest, Problem, ItChange, ChangeType, ChangeTemplate, RiskQuestion, ConfigurationItem, ServiceOffering, KnownError, RequestTask, ChangeFreeze, ItGroup, ItCategory, PriorityMatrix, ItNote, ItsmSettings, report:itsm_open_incidents, report:itsm_target_compliance, report:itsm_time_to_resolve, report:itsm_requests_by_item, report:itsm_change_success, report:itsm_change_calendar]
 
 roles:
   - name: Service Desk
@@ -17,6 +17,7 @@ roles:
     permissions:
       - {entity: Incident, read: true, write: true, create: true, export: true}
       - {entity: CatalogRequest, read: true, write: true, create: true}
+      - {entity: RequestTask, read: true, write: true, create: true}
       - {entity: Problem, read: true, write: true, create: true}
       - {entity: KnownError, read: true, write: true, create: true}
       - {entity: ItChange, read: true, write: true, create: true}
@@ -40,6 +41,7 @@ roles:
       - {entity: ChangeTemplate, read: true, write: true, create: true}
       - {entity: RiskQuestion, read: true, write: true, create: true}
       - {entity: CatalogRequest, read: true, write: true}
+      - {entity: RequestTask, read: true}
       - {entity: ConfigurationItem, read: true}
       - {entity: ServiceOffering, read: true}
       - {entity: Incident, read: true}
@@ -149,6 +151,18 @@ approvals:
         - {label: Change board (4 of its members), approvers: {field: board_members}, need: 4, when: "(doc.route == 'Board' || doc.route == 'Emergency') && doc.quorum == 4", remind_after: PT24H, escalate_after: P2D, escalate_to: {role: Change Manager}}
         - {label: Change board (5 of its members), approvers: {field: board_members}, need: 5, when: "(doc.route == 'Board' || doc.route == 'Emergency') && doc.quorum == 5", remind_after: PT24H, escalate_after: P2D, escalate_to: {role: Change Manager}}
         - {label: High-risk review, approvers: {field: escalation_members}, need: 1, when: "doc.second_look", not_earlier_deciders: true, remind_after: PT24H, escalate_after: P2D, escalate_to: {role: Change Manager}}
+  # A catalog item that names an approver group asks N of its members instead of one Change Manager; one that
+  # names none has route Manager, no step applies, and the app's own rule holds. Shipped off in that sense.
+  - entity: CatalogRequest
+    on: {action: approve_request}
+    policy:
+      lock: true
+      steps:
+        - {label: "Approver group (1 of its members)", approvers: {field: approver_members}, need: 1, when: "doc.route == 'Group' && doc.quorum == 1", remind_after: PT24H}
+        - {label: "Approver group (2 of its members)", approvers: {field: approver_members}, need: 2, when: "doc.route == 'Group' && doc.quorum == 2", remind_after: PT24H}
+        - {label: "Approver group (3 of its members)", approvers: {field: approver_members}, need: 3, when: "doc.route == 'Group' && doc.quorum == 3", remind_after: PT24H}
+        - {label: "Approver group (4 of its members)", approvers: {field: approver_members}, need: 4, when: "doc.route == 'Group' && doc.quorum == 4", remind_after: PT24H}
+        - {label: "Approver group (5 of its members)", approvers: {field: approver_members}, need: 5, when: "doc.route == 'Group' && doc.quorum == 5", remind_after: PT24H}
 
 # The communication plan of a major incident: told to the subscribers of the affected service, by e-mail unless the
 # workspace gives the template a text or chat body. A workspace edits the wording under Admin, Messages.
