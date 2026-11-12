@@ -58,3 +58,22 @@
     - {name: response_duration, check: "doc.response_time.matches('^P([0-9]+D)?(T([0-9]+H)?([0-9]+M)?)?$') && size(doc.response_time) > 2", field: response_time, message: "is an ISO 8601 duration, such as PT30M, PT4H or P2D"}
     - {name: resolution_duration, check: "doc.resolution_time.matches('^P([0-9]+D)?(T([0-9]+H)?([0-9]+M)?)?$') && size(doc.resolution_time) > 2", field: resolution_time, message: "is an ISO 8601 duration, such as PT30M, PT4H or P2D"}
   list: {columns: [impact, urgency, priority, response_time, resolution_time], sort: priority asc}
+
+- name: ItNote
+  label: Note
+  label_plural: Notes
+  kind: master
+  module: itsm
+  title_field: body
+  description: "An entry on an incident, request, problem or change: a work note for staff only, or a comment its caller sees. Kept in order with its author and time, corrected only by its author soon after, and never deleted by anyone but an administrator."
+  fields:
+    - {name: incident, type: link, to: Incident, in_list: true, in_filter: true}
+    - {name: request, type: link, to: CatalogRequest, in_list: true, in_filter: true}
+    - {name: problem, type: link, to: Problem, in_filter: true}
+    - {name: change, type: link, to: ItChange, in_filter: true}
+    - {name: visibility, type: select, options: [Internal, Visible to Caller], default: Internal, required: true, in_list: true, in_filter: true, description: "Internal: staff only. Visible to Caller: the caller sees it on an incident or request"}
+    - {name: body, type: text, required: true, in_list: true, label: Note}
+    - {name: author, type: email, read_only: true, no_copy: true, in_list: true}
+    - {name: posted_at, type: datetime, read_only: true, no_copy: true, in_list: true}
+    - {name: caller_email, type: email, read_only: true, no_copy: true, description: "The caller of its incident or request, copied so the caller is told"}
+  list: {columns: [body, visibility, author, posted_at, incident, request], sort: created_at asc}

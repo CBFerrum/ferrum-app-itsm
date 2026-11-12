@@ -21,6 +21,7 @@ mod changes;
 mod cmdb;
 mod desk;
 mod discovery;
+mod notes;
 
 use chrono::{DateTime, Utc};
 use ferrum_domain::reports::ReportSource;
@@ -49,6 +50,7 @@ pub fn register(hooks: &mut HookRegistry) {
         .register("CatalogRequest", Arc::new(desk::RequestHook))
         .register("Incident", Arc::new(desk::IncidentHook))
         .register("Problem", Arc::new(desk::ProblemHook))
+        .register("ItNote", Arc::new(notes::NoteHook))
         .register("ItChange", Arc::new(changes::ChangeHook))
         .register("ChangeFreeze", Arc::new(changes::FreezeHook));
     hooks.scoped(&[CONNECTOR_PACKAGE.to_string()], |h| {

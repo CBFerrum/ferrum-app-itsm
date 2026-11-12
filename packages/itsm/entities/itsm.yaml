@@ -114,6 +114,19 @@
     - {name: breached, type: check, read_only: true, no_copy: true, in_list: true, in_filter: true}
   rules:
     - {name: subcategory_of_category, check: "isEmpty(doc.subcategory) || (!isEmpty(doc.category) && links.subcategory.parent == doc.category)", field: subcategory, message: "must be a subcategory of the category"}
+  actions:
+    - name: confirm_resolution
+      label: Confirm Resolved
+      permission: read
+      condition: "doc.status == 'Resolved'"
+      effects: [{type: set_fields, values: {status: "'Closed'"}}]
+    - name: reject_resolution
+      label: Not Resolved
+      permission: read
+      condition: "doc.status == 'Resolved'"
+      params: [{name: note, type: text, label: What is still wrong, required: true}]
+      refuse_if: [{when: "daysBetween(doc.resolved_at, today) > settings.ItsmSettings.reopen_days", message: "it was resolved too long ago to reopen; raise a new incident"}]
+      effects: [{type: set_fields, values: {status: "'In Progress'"}}, {type: create_document, entity: ItNote, values: {incident: doc.id, visibility: "'Visible to Caller'", body: "'Not resolved: ' + params.note"}}]
   numbering: {template: "INC-{YYYY}-{seq:5}"}
   list: {columns: [number, title, priority, status, assignment_group, assigned_to, resolve_by, breached], sort: created_at desc}
 

@@ -133,4 +133,39 @@ async fn scenario() {
     assert_eq!(t.get("Incident", inc_id).await["priority"], "P2", "its priority follows the matrix");
     refused(t.set(&desk, "PriorityMatrix", uid(&mm["id"]), json!({"priority": "P1"})).await, "forbidden", "");
     refused(t.set(&cfg, "PriorityMatrix", uid(&mm["id"]), json!({"resolution_time": "four hours"})).await, "invalid", "ISO 8601");
+
+    // ───────────── 2. work notes and comments ─────────────
+    let other = t.insert(&desk, "Incident", json!({"title": "Printer jam", "caller_email": "eve@acme.test"})).await;
+    let other_id = uid(&other["id"]);
+    let ann = t.user("ann@acme.test", &["IT Self Service"]).await;
+    let on_mine = t.insert(&desk, "Incident", json!({"title": "Laptop will not boot", "caller_email": "ann@acme.test"})).await;
+    let mine_id = uid(&on_mine["id"]);
+    let note = |on: Uuid, kind: &str, body: &str| json!({"incident": on.to_string(), "visibility": kind, "body": body});
+    let wn = uid(&t.insert(&desk, "ItNote", note(mine_id, "Internal", "Looks like the SSD")).await["id"]);
+    let cm = t.insert(&desk, "ItNote", note(mine_id, "Visible to Caller", "We are on it")).await;
+    assert_eq!((cm["author"].as_str(), cm["caller_email"].as_str()), (Some("desk@acme.test"), Some("ann@acme.test")));
+    t.insert(&desk, "ItNote", note(other_id, "Visible to Caller", "For Eve only")).await;
+    refused(t.k.insert(&desk, "ItNote", obj(json!({"body": "Floating"}))).await, "invalid", "on one incident");
+    refused(t.k.insert(&desk, "ItNote", obj(json!({"problem": Uuid::nil().to_string(), "visibility": "Visible to Caller", "body": "x"}))).await, "invalid", "");
+    // The caller, as a portal person, reads only the visible ones on her own records.
+    let seen = t.k.list(&ann, "ItNote", &Default::default()).await.unwrap().rows;
+    assert_eq!(seen.iter().map(|r| r["body"].as_str().unwrap()).collect::<Vec<_>>(), ["We are on it"], "no work note, nothing of Eve's");
+    refused(t.k.get(&ann, "ItNote", wn, false).await, "not found", "");
+    let mine = t.k.list(&ann, "Incident", &Default::default()).await.unwrap().rows;
+    assert_eq!(mine.iter().map(|r| r["title"].as_str().unwrap()).collect::<Vec<_>>(), ["Laptop will not boot"]);
+    // She may comment on her own incident, visibly, and on no other, nor leave a work note.
+    let reply = t.insert(&ann, "ItNote", note(mine_id, "Visible to Caller", "Thanks, it is the black one")).await;
+    assert_eq!(reply["author"], "ann@acme.test");
+    refused(t.k.insert(&ann, "ItNote", obj(note(other_id, "Visible to Caller", "Snooping"))).await, "forbidden", "");
+    refused(t.k.insert(&ann, "ItNote", obj(note(mine_id, "Internal", "A secret note"))).await, "forbidden", "");
+    assert_eq!(t.k.list(&desk, "ItNote", &Default::default()).await.unwrap().rows.len(), 4, "staff read all, in order");
+    // A note is corrected by its author within the grace period, and then it is final; nobody but an administrator deletes.
+    let reply_id = uid(&reply["id"]);
+    t.set(&ann, "ItNote", reply_id, json!({"body": "Thanks, it is the black one (T14)"})).await.expect("within the grace period");
+    refused(t.set(&desk, "ItNote", reply_id, json!({"body": "Rewritten by staff"})).await, "invalid", "only by its author");
+    refused(t.set(&desk, "ItNote", uid(&cm["id"]), json!({"incident": other_id.to_string()})).await, "invalid", "stays on its record");
+    t.insert(&cfg, "ItsmSettings", json!({"note_edit_minutes": 0})).await;
+    refused(t.set(&ann, "ItNote", reply_id, json!({"body": "Too late"})).await, "invalid", "within 0 minutes");
+    refused(t.k.delete(&desk, "ItNote", wn, None).await, "forbidden", "");
+    t.k.delete(&t.admin, "ItNote", wn, None).await.expect("an administrator deletes");
 }
