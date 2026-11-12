@@ -1,12 +1,13 @@
 // What the screens share: the way between them, a person's rights, a dialog that asks for an action's words, the
 // states a request goes through, and the marks of a service target.
 
-import type { UseQueryResult } from "@tanstack/react-query";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { useLocation } from "react-router";
 import { ApiError, fromZonedInput, isolate, refusal, t } from "@ferrum/client";
 import { Alert, Badge, Button, ButtonLink, Dialog, Field, FormSkeleton, LoadFailed, type Tone } from "@ferrum/kit";
 import { useMetaIndex, type Perms } from "@ferrum/records";
+import { rows } from "./data";
 
 /** The screens of the app, one press apart on every page. */
 export function Nav() {
@@ -34,6 +35,12 @@ export function Nav() {
  *  from being offered that it will refuse. */
 export function useRights(entity: string): Perms | undefined {
   return useMetaIndex().data?.entities.find((e) => e.name === entity)?.permissions;
+}
+
+/** The workspace's settings (who approves a change, what a freeze does, where the scores turn, what closing a problem does); a person
+ *  who may not read them gets none, and the screens read that as the defaults the server uses. */
+export function useSettings() {
+  return useQuery({ queryKey: ["itsm", "settings"], queryFn: () => rows("ItsmSettings").then((r) => r[0] ?? null).catch(() => null), staleTime: 60_000 });
 }
 
 /** A request's three states, told apart: waiting (a skeleton the shape of the content), refused or failed (with its words and a
