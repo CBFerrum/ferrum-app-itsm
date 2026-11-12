@@ -492,4 +492,81 @@ async fn scenario() {
     // Reports carry the caller's row scope: Ann counts her own incidents only.
     let hers = report("itsm_open_incidents", ann.clone(), &[]).await;
     assert_eq!(hers["totals"]["incidents"], json!(2), "her two open incidents, nobody else's");
+
+    // ───────────── 9. a workspace upgraded from 0.2.x ─────────────
+    // 0.2.x kept the matrix in code: its workspace has no matrix rows, categories, calendar or settings, and its package
+    // stamped as it is still (the package's own version stayed 0.1.0). The platform seeds rows only when the package is installed (an administrator's update), so the
+    // upkeep, which runs for every workspace with the package, must make what this release needs.
+    let old = k
+        .create_tenant(NewTenant {
+            slug: "olddesk".into(),
+            name: "Old IT".into(),
+            admin_email: "admin@old.test".into(),
+            admin_password: "Correct-Horse-9".into(),
+            admin_name: None,
+            packages: vec!["itsm".into()],
+            settings: Some(json!({"timezone": "UTC"})),
+        })
+        .await
+        .expect("tenant");
+    let session = k.login("olddesk", "admin@old.test", "Correct-Horse-9").await.expect("login");
+    let o = T { k: k.clone(), tenant: old, admin: k.load_ctx(old, session.user, Some(session.token_version), "it".into()).await.expect("ctx") };
+    let sql = |q: &'static str| {
+        let kk = k.clone();
+        async move {
+            let mut tx = kk.db.tenant_tx(old).await.unwrap();
+            sqlx::query("select set_config('ferrum.system', 'on', true)").execute(&mut *tx).await.unwrap();
+            let n: Option<i64> = sqlx::query_scalar(q).bind(old).fetch_optional(&mut *tx).await.unwrap().flatten();
+            tx.commit().await.unwrap();
+            n.unwrap_or(0)
+        }
+    };
+    for q in [
+        "update e_it_category set parent = null where tenant_id = $1 and $1 is not null returning 1::bigint",
+        "delete from e_it_category where tenant_id = $1 returning 1::bigint",
+        "delete from e_priority_matrix where tenant_id = $1 returning 1::bigint",
+        "delete from e_itsm_settings where tenant_id = $1 returning 1::bigint",
+        "delete from automation where tenant_id = $1 returning 1::bigint",
+        "delete from logic_calendar where tenant_id = $1 returning 1::bigint",
+        "update installed_package set version = '0.1.0' where tenant_id = $1 and name = 'itsm' returning 1::bigint",
+    ] {
+        sql(q).await;
+    }
+    assert_eq!(sql("select count(*) from e_priority_matrix where tenant_id = $1").await, 0, "the 0.2.x workspace has no matrix");
+    // The workspace's own High / High row, made before the upkeep, is its own.
+    o.insert(&o.admin, "PriorityMatrix", json!({"impact": "High", "urgency": "High", "priority": "P2", "response_time": "PT30M", "resolution_time": "PT2H"}))
+        .await;
+    // With the matrix incomplete an incident is still saved: P3 and its four and 24 hours, and it says the matrix had no row.
+    let near = |a: &Doc, f: &str, hours: i64| {
+        let at = DateTime::parse_from_rfc3339(a[f].as_str().unwrap()).unwrap().with_timezone(&Utc);
+        (at - Utc::now() - Duration::hours(hours)).abs() < Duration::minutes(2)
+    };
+    let gap = o.insert(&o.admin, "Incident", json!({"title": "No row for me", "impact": "High", "urgency": "Medium"})).await;
+    assert_eq!((gap["priority"].as_str(), gap["matrix_missing"].as_bool(), gap["matrix"].is_null()), (Some("P3"), Some(true), true), "{gap:?}");
+    assert!(near(&gap, "respond_by", 4) && near(&gap, "resolve_by", 24), "the fallback's targets: {gap:?}");
+    o.set(&o.admin, "Incident", uid(&gap["id"]), json!({"status": "Resolved", "resolution": "Fixed"})).await.expect("resolved");
+    assert_eq!(o.get("Incident", uid(&gap["id"])).await["resolve_state"], "met");
+    let mine = o.insert(&o.admin, "Incident", json!({"title": "Own row", "impact": "High", "urgency": "High"})).await;
+    assert_eq!((mine["priority"].as_str(), mine["matrix_missing"].as_bool()), (Some("P2"), Some(false)), "the row it has is used");
+    // The upkeep, with no administrator, makes the other eight rows, the categories, the calendar and the notices.
+    ferrum_app_itsm::maintenance(&k).await.expect("upkeep");
+    assert_eq!(sql("select count(*) from e_priority_matrix where tenant_id = $1").await, 9);
+    let kept = o.get("PriorityMatrix", o.named("PriorityMatrix", "matrix_name", "High / High").await).await;
+    assert_eq!((kept["priority"].as_str(), kept["response_time"].as_str()), (Some("P2"), Some("PT30M")), "a row the workspace changed is not overwritten");
+    assert_eq!(sql("select count(*) from e_it_category where tenant_id = $1").await, 12);
+    assert_eq!(sql("select count(*) from e_it_category c join e_it_category p on p.id = c.parent where c.tenant_id = $1 and c.category_name = 'VPN' and p.category_name = 'Network'").await, 1);
+    assert_eq!(sql("select count(*) from logic_calendar where tenant_id = $1 and name = 'itsm_hours'").await, 1);
+    assert_eq!(sql("select count(*) from automation where tenant_id = $1 and name like 'IT Services:%'").await, 7);
+    // A row it deletes afterwards stays deleted, and a second upkeep changes nothing.
+    sql("delete from e_priority_matrix where tenant_id = $1 and impact = 'Low' and urgency = 'Low' returning 1::bigint").await;
+    ferrum_app_itsm::maintenance(&k).await.expect("upkeep again");
+    assert_eq!(sql("select count(*) from e_priority_matrix where tenant_id = $1").await, 8);
+    let after = o.insert(&o.admin, "Incident", json!({"title": "Now a row", "impact": "High", "urgency": "Medium"})).await;
+    assert_eq!((after["priority"].as_str(), after["matrix_missing"].as_bool()), (Some("P2"), Some(false)));
+    o.set(&o.admin, "Incident", uid(&after["id"]), json!({"status": "Resolved", "resolution": "Done"})).await.expect("resolved");
+    // The administrator's own update (the platform's install) adds what is missing and overwrites nothing.
+    o.set(&o.admin, "PriorityMatrix", o.named("PriorityMatrix", "matrix_name", "Low / Medium").await, json!({"priority": "P1"})).await.unwrap();
+    k.install_packages(old, &["itsm".to_string()]).await.expect("update");
+    assert_eq!(sql("select count(*) from e_priority_matrix where tenant_id = $1").await, 9, "the deleted row is back, as an install does");
+    assert_eq!(o.get("PriorityMatrix", o.named("PriorityMatrix", "matrix_name", "Low / Medium").await).await["priority"], "P1");
 }

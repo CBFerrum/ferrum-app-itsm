@@ -128,6 +128,7 @@
     - {name: impact, type: select, options: [High, Medium, Low], default: Medium, required: true, in_list: true}
     - {name: urgency, type: select, options: [High, Medium, Low], default: Medium, required: true, in_list: true}
     - {name: matrix, type: link, to: PriorityMatrix, read_only: true, no_copy: true, label: Priority Matrix Row}
+    - {name: matrix_missing, type: check, read_only: true, no_copy: true, in_filter: true, label: Matrix Had No Row, description: "The Priority Matrix had no row for this impact and urgency, so the incident took priority P3 and the four and 24 working hours of the shipped P3 row"}
     - {name: priority, type: select, options: [P1, P2, P3, P4], read_only: true, in_list: true, in_filter: true}
     - {name: major, type: check, read_only: true, in_filter: true, description: "P1 on a critical item"}
     - {name: status, type: select, options: [New, In Progress, On Hold, Awaiting Caller, Resolved, Closed], default: New, in_list: true, in_filter: true, description: "Awaiting Caller stops the response and resolution clocks"}
@@ -157,8 +158,8 @@
       refuse_if: [{when: "daysBetween(doc.resolved_at, today) > settings.ItsmSettings.reopen_days", message: "it was resolved too long ago to reopen; raise a new incident"}]
       effects: [{type: set_fields, values: {status: "'In Progress'"}}, {type: create_document, entity: ItNote, values: {incident: doc.id, visibility: "'Visible to Caller'", body: "'Not resolved: ' + params.note"}}]
   targets:
-    - {name: respond, label: Response, calendar: itsm_hours, within: "links.matrix.response_time", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status != 'New'", due_field: respond_by, state_field: respond_state}
-    - {name: resolve, label: Resolution, calendar: itsm_hours, within: "links.matrix.resolution_time", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status == 'Resolved' || doc.status == 'Closed'", due_field: resolve_by, state_field: resolve_state}
+    - {name: respond, label: Response, calendar: itsm_hours, within: "isEmpty(doc.matrix) ? 'PT4H' : links.matrix.response_time", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status != 'New'", due_field: respond_by, state_field: respond_state}
+    - {name: resolve, label: Resolution, calendar: itsm_hours, within: "isEmpty(doc.matrix) ? 'PT24H' : links.matrix.resolution_time", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status == 'Resolved' || doc.status == 'Closed'", due_field: resolve_by, state_field: resolve_state}
   numbering: {template: "INC-{YYYY}-{seq:5}"}
   list: {columns: [number, title, priority, status, assignment_group, assigned_to, resolve_by, resolve_state], sort: created_at desc}
 

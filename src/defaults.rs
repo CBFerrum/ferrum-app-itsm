@@ -1,11 +1,18 @@
 //! What a workspace starts with that is not a package's own record: the working calendar its targets
-//! count on, and the notifications to callers and assignees (`automations.json`: automations like any
-//! other, with their wording as templates). Both are the workspace's to edit (Admin, Calendars and
-//! Automations); the calendar is made only when absent and the automations once, so no edit is undone.
+//! count on, the notifications to callers and assignees (`automations.json`: automations like any
+//! other, with their wording as templates), and the package's seed rows (the priority matrix, the
+//! categories). All are the workspace's to edit (Admin, Calendars, Automations, the records themselves);
+//! the calendar is made only when absent, and the automations and any seed row missing once, so no edit is undone.
+//!
+//! The platform seeds a package's rows only when the package is installed or an administrator updates the
+//! app (`Kernel::install_packages`), never when a server with a newer build starts: a workspace upgraded
+//! from 0.2.x would otherwise run this release with an empty matrix until someone pressed Update. So the
+//! upkeep makes them too, by the same rule as the platform's (a row is added when none has its key).
 
 use crate::obj;
 use ferrum_domain::util::sys;
-use ferrum_kernel::{Ctx, Kernel, Result, Tx};
+use ferrum_kernel::query::Filter;
+use ferrum_kernel::{Ctx, Doc, Kernel, Result, Tx};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -27,9 +34,10 @@ pub(crate) async fn ensure_calendar(tx: &mut Tx, tenant: Uuid) -> Result<()> {
 /// The notifications as shipped: automations, each with its own id.
 const AUTOMATIONS: &str = include_str!("automations.json");
 
-/// Makes the automations once for the workspace (the settings record notes that they were made), as
-/// the system; a workspace that edits or switches one off, or deletes it, is not undone.
-pub(crate) async fn ensure_automations(k: &Kernel, ctx: &Ctx) -> Result<()> {
+/// Makes the automations and the package's seed rows once for the workspace (the settings record notes
+/// that they were made), as the system; a workspace that edits or switches one off, or deletes it, or
+/// deletes a seed row, is not undone, and a row it changed is never overwritten.
+pub(crate) async fn ensure_defaults(k: &Kernel, ctx: &Ctx) -> Result<()> {
     let system = sys(ctx);
     let mut tx = k.db.tenant_tx(ctx.tenant).await?;
     let settings = k.find_tx(&system, &mut tx, "ItsmSettings", &[], None, 1).await?;
@@ -42,6 +50,7 @@ pub(crate) async fn ensure_automations(k: &Kernel, ctx: &Ctx) -> Result<()> {
         ferrum_kernel::automation::save(k, &system, &obj(a)).await?;
     }
     let mut tx = k.db.tenant_tx(ctx.tenant).await?;
+    seed_rows(k, &system, &mut tx).await?;
     match settings.first().and_then(|s| s.get("id")).and_then(Value::as_str).and_then(|i| i.parse().ok()) {
         Some(id) => k.set_values_tx(&system, &mut tx, "ItsmSettings", id, obj(json!({"defaults_made": true}))).await?,
         None => {
@@ -49,5 +58,31 @@ pub(crate) async fn ensure_automations(k: &Kernel, ctx: &Ctx) -> Result<()> {
         }
     }
     tx.commit().await?;
+    Ok(())
+}
+
+/// The package's seed rows that the workspace has none of (by the seed's key), in the order the package lists
+/// them (a parent before the rows that name it); `@Entity:field=value` is the id of that record.
+async fn seed_rows(k: &Kernel, system: &Ctx, tx: &mut Tx) -> Result<()> {
+    let pkgs = crate::packages().map_err(|e| ferrum_kernel::Error::internal(format!("package itsm: {e}")))?;
+    for seed in pkgs.iter().filter(|p| p.name() == "itsm").flat_map(|p| p.manifest.seed.iter()) {
+        for rec in &seed.records {
+            let mut row = Doc::new();
+            for (field, v) in rec {
+                let named = v.as_str().and_then(|t| t.strip_prefix('@')).and_then(|t| t.split_once(':')).and_then(|(e, c)| Some((e, c.split_once('=')?)));
+                let v = match named {
+                    Some((entity, (f, value))) => {
+                        k.find_tx(system, tx, entity, &[Filter::eq(f, value)], None, 1).await?.first().and_then(|d| d.get("id").cloned())
+                    }
+                    None => Some(v.clone()),
+                };
+                row.insert(field.clone(), v.ok_or_else(|| ferrum_kernel::Error::internal(format!("seed {}: {field} names nothing", seed.entity)))?);
+            }
+            let by: Vec<Filter> = seed.key.iter().map(|f| Filter::eq(f, row.get(f).cloned().unwrap_or(Value::Null))).collect();
+            if k.find_tx(system, tx, &seed.entity, &by, None, 1).await?.is_empty() {
+                k.insert_tx(system, tx, &seed.entity, row).await?;
+            }
+        }
+    }
     Ok(())
 }
