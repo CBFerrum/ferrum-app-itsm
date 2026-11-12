@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0
+
+The service desk closes the gaps an audit against ServiceNow, Jira Service Management, Freshservice, Zendesk and Freshdesk found.
+
+- **Who and what.** An incident and a request have a caller (an address, or a name and contact for someone outside), an assignment group (records: members and a lead) and an assignee who is one of its members, and a category and subcategory (a tree). An incident names the business service. The priority matrix is records (`PriorityMatrix`), seeded with the old values; the app's own matrix is gone. `assigned_to` is the assignee, label changed, data untouched.
+- **Notes.** `ItNote`: work notes (staff only) and comments the caller sees, on an incident, request, problem or change, corrected only by their author within `ItsmSettings.note_edit_minutes` (5), never deleted but by an administrator.
+- **Targets.** Response and resolution targets on incidents and requests are the platform's service targets on the working calendar `itsm_hours` (made on first use, every hour of every day in UTC, which is the wall clock the app counted before), paused while Awaiting Caller; the breach is recorded once by the platform. The fixed 4, 8, 24 and 72 hours and `mark_breached` are gone: the hours are the matrix's, an offering's `response_hours` and `fulfil_hours`. The incident's `breached` check is replaced by `resolve_state` and `respond_state`. Incidents and requests open at upgrade keep the clock they had (sql/001_targets.sql): started when opened, running to the moment they were due; one already breached stays breached; no response target is started for them.
+- **Self-service.** The portal role IT Self Service: report an incident, ask from the catalog, follow their own with the visible comments, comment, confirm a resolution or reopen it within `ItsmSettings.reopen_days` (5).
+- **Catalogue forms.** An offering has questions (kind, required, choices, only-when) and a fulfilment group; a request carries `answers`, checked on the server. The generic `details` text is gone; what existing requests held is kept as an internal note (sql/002_request_details.sql).
+- **Notifications.** Seven automations are made once per workspace (`ensure_automations`), for the caller (received, resolved, done, a comment meant for them) and the assignee; the workspace edits them under Automations.
+- **Reports.** Open incidents, target compliance, mean time to resolve, requests by catalogue item, change success.
+- Not done: a change board of several approvers (item 6 of the audit), approval chains on requests, notifying a group's members, and the interface's own screens (the home still reads the removed `breached` field).
+
 ## 0.2.15
 
 Rebuilt with Ferrum-Frontend 45dad7f, the design system as tuned after the landed build was reviewed. The left menu's icons are chosen so that none repeats on more than three rows and each fits its row; their drawings load beside the first page instead of inside it, so the page starts lighter; a row that scrolls sideways fades at the edge where there is more, in every browser and with reduced motion; a printed record leaves out empty fields and keeps its totals with the table; menus and popovers sit inside the page's landmarks for assistive technology; a selection bar folds what does not fit into More on a narrow screen. Nothing else changes.
