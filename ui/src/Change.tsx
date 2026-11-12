@@ -12,20 +12,10 @@ import { LinkInput, useLinkTitle } from "@ferrum/records";
 import { ApprovalState, useAsked } from "./Approval";
 import { derive, change, make, record, rows, run, type Row, text, titleOf } from "./data";
 import { emptyDraft, flagLines, fromRow, inFreeze, levelOf, missing, routeLines, toBody, windowWords, type Draft, type Level } from "./draft";
-import { Ask, Await, Nav, Refused, useRights, type Param } from "./ui";
+import { Ask, Await, Nav, Refused, useRights, useSettings, type Param } from "./ui";
 import { when } from "./desk";
 
 const LEVELS: Level[] = ["Low", "Medium", "High"];
-
-/** The workspace's change settings (who approves, what a freeze does, where the scores turn); a person who may not read them
- *  gets the defaults the server uses. */
-function useSettings() {
-  return useQuery({
-    queryKey: ["itsm", "settings"],
-    queryFn: () => rows("ItsmSettings").then((r) => r[0] ?? null).catch(() => null),
-    staleTime: 60_000,
-  });
-}
 
 const useTypes = () => useQuery({ queryKey: ["itsm", "types"], queryFn: () => rows("ChangeType", [], { titles: true, sort: "type_name asc" }).then((r) => r.filter((x) => x.active !== false)), staleTime: 60_000 });
 

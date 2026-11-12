@@ -20,6 +20,10 @@ export interface Fake {
 /** Puts a fake server in place of the network. */
 export function fakeServer(routes: Fake["routes"]): Fake {
   const fake: Fake = { routes, seen: [] };
+  // jsdom has no modal dialog: an open one is enough for a test to read and press what is in it.
+  const dialog = HTMLDialogElement.prototype as { showModal?: () => void; close?: () => void };
+  dialog.showModal = function (this: HTMLDialogElement) { this.setAttribute("open", ""); };
+  dialog.close = function (this: HTMLDialogElement) { this.removeAttribute("open"); };
   (globalThis as { matchMedia?: unknown }).matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
   vi.stubGlobal(
     "fetch",
