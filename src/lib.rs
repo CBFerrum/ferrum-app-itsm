@@ -19,8 +19,11 @@
 mod assets;
 mod changes;
 mod cmdb;
+mod defaults;
 mod desk;
 mod discovery;
+mod notes;
+mod reports;
 
 use chrono::{DateTime, Utc};
 use ferrum_domain::reports::ReportSource;
@@ -47,8 +50,10 @@ pub fn register(hooks: &mut HookRegistry) {
     hooks
         .register("ConfigurationItem", Arc::new(cmdb::CiHook))
         .register("CatalogRequest", Arc::new(desk::RequestHook))
+        .register("ServiceOffering", Arc::new(desk::OfferingHook))
         .register("Incident", Arc::new(desk::IncidentHook))
         .register("Problem", Arc::new(desk::ProblemHook))
+        .register("ItNote", Arc::new(notes::NoteHook))
         .register("ItChange", Arc::new(changes::ChangeHook))
         .register("ChangeFreeze", Arc::new(changes::FreezeHook));
     hooks.scoped(&[CONNECTOR_PACKAGE.to_string()], |h| {
@@ -64,12 +69,13 @@ pub const CONNECTOR_PACKAGE: &str = "itsm_assets";
 /// `itsm_assets`, its code this crate's. It ships with IT Services.
 pub const CONNECTOR_MANIFEST: &str = include_str!("../connectors/assets/app.yaml");
 
-/// This app's reports: none of its own yet.
+/// This app's reports (listed in its menu, `packages/itsm/package.yaml`).
 pub fn reports() -> Vec<Arc<dyn ReportSource>> {
-    vec![]
+    vec![Arc::new(reports::ItsmReports)]
 }
 
-/// Upkeep: incidents still open past their time marked breached; items their discovery source no
+/// Upkeep: the working calendar the targets count on made when absent, and once the notifications and seed rows a
+/// workspace upgraded from an earlier release lacks; items their discovery source no
 /// longer reports marked not seen; and, with the connector, what items show of their asset kept.
 pub async fn maintenance(k: &Kernel) -> Result<()> {
     maintenance_at(k, Utc::now()).await
@@ -89,8 +95,9 @@ pub async fn maintenance_at(k: &Kernel, now: DateTime<Utc>) -> Result<()> {
             }
             let connected = schema.packages.iter().any(|p| p == CONNECTOR_PACKAGE);
             let ctx = Ctx::system(tenant, schema);
+            defaults::ensure_defaults(k, &ctx).await?;
             let mut tx = k.db.tenant_tx(tenant).await?;
-            desk::mark_breached(k, &ctx, &mut tx, now).await?;
+            defaults::ensure_calendar(&mut tx, tenant).await?;
             discovery::mark_missing(k, &ctx, &mut tx, now).await?;
             if connected {
                 assets::refresh(k, &ctx, &mut tx).await?;
@@ -118,16 +125,6 @@ pub(crate) fn at(doc: &Doc, k: &str) -> Option<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_priority_matrix() {
-        use desk::{hours, priority};
-        assert_eq!(priority("High", "High"), "P1");
-        assert_eq!((priority("High", "Medium"), priority("Medium", "High")), ("P2", "P2"));
-        assert_eq!((priority("High", "Low"), priority("Medium", "Medium"), priority("Low", "High")), ("P3", "P3", "P3"));
-        assert_eq!((priority("Medium", "Low"), priority("Low", "Low")), ("P4", "P4"));
-        assert_eq!((hours("P1"), hours("P2"), hours("P3"), hours("P4")), (4, 8, 24, 72));
-    }
 
     #[test]
     fn the_interface_is_a_release_the_platform_takes() {

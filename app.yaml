@@ -1,6 +1,6 @@
 id: itsm
 name: IT Services
-version: 0.2.15
+version: 0.3.0
 publisher: cbferrum
 summary: "Configuration items and their dependencies, discovered or kept by hand, a service catalog, incidents by priority with their targets, problems, and changes with approval, conflicts, freezes and impact"
 description: README.md
@@ -40,7 +40,7 @@ contributes:
       title: "IT Services"
       instructions: >-
         A ConfigurationItem (Planned, Live, Retired), with its dependencies (CiRelation), is what IT runs. An Incident
-        (New, In Progress, On Hold, Resolved, Closed) has a priority and its targets; a Problem (Open, Known Error,
+        (New, In Progress, On Hold, Awaiting Caller, Resolved, Closed) has a caller, an assignment group, a priority from the Priority Matrix and response and resolution targets; a Problem (Open, Known Error,
         Resolved, Closed) is the cause behind incidents. An ItChange (Draft, Submitted, Approved, Implemented, Closed,
         Rejected, Failed) needs approval and must keep out of a ChangeFreeze. A CatalogRequest is what someone asked
         for from the catalog (ServiceOffering).

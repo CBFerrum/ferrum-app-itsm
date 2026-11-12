@@ -1,0 +1,145 @@
+[
+  {
+    "id": "a834d6ea-e76d-4266-8572-79db92fad72e",
+    "name": "IT Services: incident received",
+    "entity": "Incident",
+    "event": "created",
+    "is_active": true,
+    "actions": [
+      {
+        "type": "notify",
+        "to": "field:caller_email",
+        "title": "'We received your incident ' + doc.number + ': ' + doc.title"
+      },
+      {
+        "type": "email",
+        "when": "!isEmpty(doc.caller_email)",
+        "to": "doc.caller_email",
+        "subject": "'Incident ' + doc.number + ' received: ' + doc.title",
+        "body": "'Incident ' + doc.number + ' received: ' + doc.title",
+        "template": "<p>We received your incident <b>{{ doc.number }}</b>: {{ doc.title }}.</p><p>We will tell you when there is news.</p>"
+      }
+    ]
+  },
+  {
+    "id": "2d0fd2c4-6483-4099-9383-f6d43305b9d6",
+    "name": "IT Services: incident assigned (new)",
+    "entity": "Incident",
+    "event": "created",
+    "is_active": true,
+    "actions": [
+      {
+        "type": "notify",
+        "to": "field:assigned_to",
+        "title": "'Incident ' + doc.number + ' is assigned to you: ' + doc.title"
+      }
+    ],
+    "condition": "!isEmpty(doc.assigned_to)"
+  },
+  {
+    "id": "d64e3a22-9cb8-407a-9373-ae5c8a64725b",
+    "name": "IT Services: incident assigned",
+    "entity": "Incident",
+    "event": "updated",
+    "is_active": true,
+    "actions": [
+      {
+        "type": "notify",
+        "to": "field:assigned_to",
+        "title": "'Incident ' + doc.number + ' is assigned to you: ' + doc.title"
+      }
+    ],
+    "condition": "!isEmpty(doc.assigned_to) && doc.assigned_to != old.assigned_to"
+  },
+  {
+    "id": "dafd8f35-68dc-4311-91ec-502a27e661b9",
+    "name": "IT Services: incident resolved",
+    "entity": "Incident",
+    "event": "updated",
+    "is_active": true,
+    "actions": [
+      {
+        "type": "notify",
+        "to": "field:caller_email",
+        "title": "'Incident ' + doc.number + ' is resolved: ' + doc.resolution"
+      },
+      {
+        "type": "email",
+        "when": "!isEmpty(doc.caller_email)",
+        "to": "doc.caller_email",
+        "subject": "'Incident ' + doc.number + ' is resolved'",
+        "body": "'Incident ' + doc.number + ' is resolved'",
+        "template": "<p>Your incident <b>{{ doc.number }}</b> ({{ doc.title }}) is resolved: {{ doc.resolution }}</p><p>If it is not, tell us and we will look again.</p>"
+      }
+    ],
+    "condition": "doc.status == 'Resolved' && old.status != 'Resolved'"
+  },
+  {
+    "id": "0058f925-7372-46ca-a7f3-bb503e97fa11",
+    "name": "IT Services: request received",
+    "entity": "CatalogRequest",
+    "event": "created",
+    "is_active": true,
+    "actions": [
+      {
+        "type": "notify",
+        "to": "field:caller_email",
+        "title": "'We received your request ' + doc.number"
+      },
+      {
+        "type": "email",
+        "when": "!isEmpty(doc.caller_email)",
+        "to": "doc.caller_email",
+        "subject": "'Request ' + doc.number + ' received'",
+        "body": "'Request ' + doc.number + ' received'",
+        "template": "<p>We received your request <b>{{ doc.number }}</b>.</p><p>We will tell you when it is done.</p>"
+      }
+    ]
+  },
+  {
+    "id": "cfa89bc5-d526-45c4-9bc1-32670adf8212",
+    "name": "IT Services: request fulfilled",
+    "entity": "CatalogRequest",
+    "event": "updated",
+    "is_active": true,
+    "actions": [
+      {
+        "type": "notify",
+        "to": "field:caller_email",
+        "title": "'Your request ' + doc.number + ' is done'"
+      },
+      {
+        "type": "email",
+        "when": "!isEmpty(doc.caller_email)",
+        "to": "doc.caller_email",
+        "subject": "'Request ' + doc.number + ' is done'",
+        "body": "'Request ' + doc.number + ' is done'",
+        "template": "<p>Your request <b>{{ doc.number }}</b> is done.</p>"
+      }
+    ],
+    "condition": "doc.status == 'Fulfilled' && old.status != 'Fulfilled'"
+  },
+  {
+    "id": "35480f81-76d9-43a3-aeff-00f0d1cef538",
+    "name": "IT Services: comment for the caller",
+    "entity": "ItNote",
+    "event": "created",
+    "is_active": true,
+    "actions": [
+      {
+        "type": "notify",
+        "to": "field:caller_email",
+        "title": "'New comment from IT: ' + doc.body"
+      },
+      {
+        "type": "email",
+        "when": "!isEmpty(doc.caller_email)",
+        "to": "doc.caller_email",
+        "subject": "'A new comment on your ticket'",
+        "body": "'A new comment on your ticket'",
+        "template": "<p>IT wrote:</p><blockquote>{{ doc.body }}</blockquote>"
+      }
+    ],
+    "condition": "doc.visibility == 'Visible to Caller' && doc.author != doc.caller_email"
+  }
+]
