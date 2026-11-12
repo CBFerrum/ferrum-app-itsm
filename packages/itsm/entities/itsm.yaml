@@ -43,7 +43,8 @@
     - {name: description, type: text}
     - {name: service, type: link, to: ConfigurationItem, in_list: true}
     - {name: needs_approval, type: check, in_list: true}
-    - {name: fulfil_hours, type: int, required: true, default: 24, in_list: true, label: Hours to Fulfil}
+    - {name: response_hours, type: int, required: true, default: 4, min: 1, in_list: true, label: Hours to Respond, description: "Working hours on the calendar itsm_hours"}
+    - {name: fulfil_hours, type: int, required: true, default: 24, min: 1, in_list: true, label: Hours to Fulfil, description: "Working hours on the calendar itsm_hours"}
     - {name: active, type: check, default: true, in_list: true, in_filter: true}
   list: {columns: [offering_name, service, needs_approval, fulfil_hours, active], sort: offering_name asc}
 
@@ -65,8 +66,11 @@
     - {name: assignment_group, type: link, to: ItGroup, in_list: true, in_filter: true}
     - {name: assigned_to, type: email, in_list: true, in_filter: true, label: Assignee, description: "One of the assignment group's members"}
     - {name: details, type: text}
-    - {name: status, type: select, options: [Submitted, Approved, Rejected, Fulfilled, Cancelled], default: Submitted, read_only: true, no_copy: true, in_list: true, in_filter: true}
-    - {name: due_at, type: datetime, read_only: true, no_copy: true, in_list: true}
+    - {name: status, type: select, options: [Submitted, Approved, Awaiting Caller, Rejected, Fulfilled, Cancelled], default: Submitted, read_only: true, no_copy: true, in_list: true, in_filter: true}
+    - {name: respond_by, type: datetime, no_copy: true, label: Respond By}
+    - {name: respond_state, type: select, options: [running, paused, met, met_late, breached], no_copy: true, in_filter: true, label: Response Target}
+    - {name: due_at, type: datetime, no_copy: true, in_list: true, label: Due}
+    - {name: fulfil_state, type: select, options: [running, paused, met, met_late, breached], no_copy: true, in_list: true, in_filter: true, label: Fulfilment Target}
     - {name: decided_by, type: email, read_only: true, no_copy: true}
     - {name: decision_note, type: text, read_only: true, no_copy: true}
     - {name: fulfilled_at, type: datetime, read_only: true, no_copy: true}
@@ -77,8 +81,11 @@
     - {name: cancel_request, label: Cancel It, permission: write, condition: "doc.status == 'Submitted' || doc.status == 'Approved'"}
   rules:
     - {name: subcategory_of_category, check: "isEmpty(doc.subcategory) || (!isEmpty(doc.category) && links.subcategory.parent == doc.category)", field: subcategory, message: "must be a subcategory of the category"}
+  targets:
+    - {name: respond, label: Response, calendar: itsm_hours, within: "'PT' + string(links.offering.response_hours) + 'H'", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status != 'Submitted' && doc.status != 'Awaiting Caller'", due_field: respond_by, state_field: respond_state}
+    - {name: fulfil, label: Fulfilment, calendar: itsm_hours, within: "'PT' + string(links.offering.fulfil_hours) + 'H'", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status == 'Fulfilled' || doc.status == 'Rejected' || doc.status == 'Cancelled'", due_field: due_at, state_field: fulfil_state}
   numbering: {template: "REQ-{YYYY}-{seq:5}"}
-  list: {columns: [number, offering, requested_by, status, due_at], sort: created_at desc}
+  list: {columns: [number, offering, requested_by, status, due_at, fulfil_state], sort: created_at desc}
 
 - name: Incident
   label: Incident
@@ -108,10 +115,12 @@
     - {name: assigned_to, type: email, in_list: true, in_filter: true, label: Assignee, description: "One of the assignment group's members"}
     - {name: problem, type: link, to: Problem}
     - {name: opened_at, type: datetime, read_only: true, no_copy: true}
-    - {name: resolve_by, type: datetime, read_only: true, no_copy: true, in_list: true}
+    - {name: respond_by, type: datetime, no_copy: true, label: Respond By}
+    - {name: respond_state, type: select, options: [running, paused, met, met_late, breached], no_copy: true, in_filter: true, label: Response Target}
+    - {name: resolve_by, type: datetime, no_copy: true, in_list: true, label: Resolve By}
+    - {name: resolve_state, type: select, options: [running, paused, met, met_late, breached], no_copy: true, in_list: true, in_filter: true, label: Resolution Target}
     - {name: resolution, type: text}
     - {name: resolved_at, type: datetime, read_only: true, no_copy: true}
-    - {name: breached, type: check, read_only: true, no_copy: true, in_list: true, in_filter: true}
   rules:
     - {name: subcategory_of_category, check: "isEmpty(doc.subcategory) || (!isEmpty(doc.category) && links.subcategory.parent == doc.category)", field: subcategory, message: "must be a subcategory of the category"}
   actions:
@@ -127,8 +136,11 @@
       params: [{name: note, type: text, label: What is still wrong, required: true}]
       refuse_if: [{when: "daysBetween(doc.resolved_at, today) > settings.ItsmSettings.reopen_days", message: "it was resolved too long ago to reopen; raise a new incident"}]
       effects: [{type: set_fields, values: {status: "'In Progress'"}}, {type: create_document, entity: ItNote, values: {incident: doc.id, visibility: "'Visible to Caller'", body: "'Not resolved: ' + params.note"}}]
+  targets:
+    - {name: respond, label: Response, calendar: itsm_hours, within: "links.matrix.response_time", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status != 'New'", due_field: respond_by, state_field: respond_state}
+    - {name: resolve, label: Resolution, calendar: itsm_hours, within: "links.matrix.resolution_time", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status == 'Resolved' || doc.status == 'Closed'", due_field: resolve_by, state_field: resolve_state}
   numbering: {template: "INC-{YYYY}-{seq:5}"}
-  list: {columns: [number, title, priority, status, assignment_group, assigned_to, resolve_by, breached], sort: created_at desc}
+  list: {columns: [number, title, priority, status, assignment_group, assigned_to, resolve_by, resolve_state], sort: created_at desc}
 
 - name: Problem
   label: Problem

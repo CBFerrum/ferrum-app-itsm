@@ -4,6 +4,7 @@
 //! comments, targets on the platform's clock, the employee portal, catalogue forms, change boards,
 //! and the reports. The older scenarios are in tests/itsm_it.rs.
 
+use chrono::{DateTime, Duration, Utc};
 use ferrum_kernel::secret::SecretKey;
 use ferrum_kernel::tenant::NewTenant;
 use ferrum_kernel::{Ctx, Db, DbConfig, Doc, Error, HookRegistry, Kernel, KernelSettings, ListQuery};
@@ -168,4 +169,90 @@ async fn scenario() {
     refused(t.set(&ann, "ItNote", reply_id, json!({"body": "Too late"})).await, "invalid", "within 0 minutes");
     refused(t.k.delete(&desk, "ItNote", wn, None).await, "forbidden", "");
     t.k.delete(&t.admin, "ItNote", wn, None).await.expect("an administrator deletes");
+
+    // ───────────── 3. targets on the platform's clock ─────────────
+    let when = |d: &Doc, f: &str| d[f].as_str().map(|v| DateTime::parse_from_rfc3339(v).unwrap().with_timezone(&Utc));
+    let p1 = t.insert(&desk, "Incident", json!({"title": "Everything is down", "impact": "High", "urgency": "High"})).await;
+    let p1_id = uid(&p1["id"]);
+    let started = Utc::now();
+    let near = |a: DateTime<Utc>, b: DateTime<Utc>| (a - b).abs() < Duration::minutes(2);
+    assert!(near(when(&p1, "respond_by").unwrap(), started + Duration::minutes(15)), "P1 response: {p1:?}");
+    assert!(near(when(&p1, "resolve_by").unwrap(), started + Duration::hours(4)), "P1 resolution: {p1:?}");
+    assert_eq!((p1["respond_state"].as_str(), p1["resolve_state"].as_str()), (Some("running"), Some("running")));
+    let calendars: i64 = {
+        let mut tx = k.db.tenant_tx(tenant).await.unwrap();
+        let n = sqlx::query_scalar("select count(*) from logic_calendar where tenant_id = $1 and name = 'itsm_hours'")
+            .bind(tenant)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        n
+    };
+    assert_eq!(calendars, 1, "the working calendar the targets count on is made once, and is the workspace's to edit");
+    // Taken up: the response target is met; waiting on the caller stops the resolution clock, and resuming restarts it.
+    t.set(&desk, "Incident", p1_id, json!({"status": "In Progress"})).await.unwrap();
+    assert_eq!(t.get("Incident", p1_id).await["respond_state"], "met");
+    t.set(&desk, "Incident", p1_id, json!({"status": "Awaiting Caller"})).await.unwrap();
+    let waiting = t.get("Incident", p1_id).await;
+    assert_eq!((waiting["resolve_state"].as_str(), waiting["resolve_by"].is_null()), (Some("paused"), true), "paused while waiting on the caller");
+    t.set(&desk, "Incident", p1_id, json!({"status": "In Progress"})).await.unwrap();
+    assert_eq!(t.get("Incident", p1_id).await["resolve_state"], "running");
+    // The breach is recorded once, by the platform.
+    let later = Utc::now() + Duration::hours(6);
+    assert!(k.sweep_targets_at(later).await.unwrap() >= 1, "the P1 open past its four hours, and the unanswered ones past theirs");
+    assert_eq!(k.sweep_targets_at(later).await.unwrap(), 0, "once");
+    assert_eq!(t.get("Incident", p1_id).await["resolve_state"], "breached");
+    t.set(&desk, "Incident", p1_id, json!({"status": "Resolved", "resolution": "Rebooted"})).await.unwrap();
+    assert_eq!(t.get("Incident", p1_id).await["resolve_state"], "met_late");
+    // A workspace's own hours: Monday to Friday, 09:00 to 17:00 UTC, and a Friday 16:00 P3 is due Monday.
+    let hours = json!([["09:00", "17:00"]]);
+    let cal: ferrum_kernel::Calendar =
+        serde_json::from_value(json!({"name": "itsm_hours", "zone": "UTC", "weekends": ["sat", "sun"], "holidays": [], "revision": 0,
+        "hours": {"mon": hours, "tue": hours, "wed": hours, "thu": hours, "fri": hours}}))
+        .unwrap();
+    t.k.set_logic_calendar(&t.admin, &cal).await.expect("an administrator edits the calendar");
+    t.k.pin_clock(Some("2026-11-13T16:00:00Z".parse().unwrap()));
+    let p3 = t.insert(&desk, "Incident", json!({"title": "Slow wifi", "impact": "High", "urgency": "Low"})).await;
+    t.k.pin_clock(None);
+    assert_eq!(when(&p3, "respond_by").unwrap().to_rfc3339(), "2026-11-16T12:00:00+00:00", "one working hour on Friday, three on Monday");
+    assert_eq!(
+        when(&p3, "resolve_by").unwrap().to_rfc3339(),
+        "2026-11-18T16:00:00+00:00",
+        "24 working hours: one on Friday, eight each on Monday and Tuesday, seven on Wednesday"
+    );
+    // A request has its offering's targets.
+    let offer = uid(&t.insert(&cfg, "ServiceOffering", json!({"offering_name": "VPN access", "response_hours": 2, "fulfil_hours": 3})).await["id"]);
+    t.k.pin_clock(Some("2026-11-16T10:00:00Z".parse().unwrap()));
+    let ask = t.insert(&desk, "CatalogRequest", json!({"offering": offer.to_string()})).await;
+    t.k.pin_clock(None);
+    assert_eq!(
+        (when(&ask, "respond_by").unwrap().to_rfc3339(), when(&ask, "due_at").unwrap().to_rfc3339()),
+        ("2026-11-16T12:00:00+00:00".to_string(), "2026-11-16T13:00:00+00:00".to_string())
+    );
+    assert_eq!((ask["respond_state"].as_str(), ask["fulfil_state"].as_str()), (Some("running"), Some("running")));
+    // Incidents open when this release came keep the clock they had.
+    let mut tx = k.db.tenant_tx(tenant).await.unwrap();
+    sqlx::query("select set_config('ferrum.system', 'on', true)").execute(&mut *tx).await.unwrap();
+    sqlx::raw_sql("alter table e_incident add column breached boolean").execute(&mut *tx).await.unwrap();
+    let old: Uuid = Uuid::now_v7();
+    sqlx::query(
+        "insert into e_incident (tenant_id, id, title, impact, urgency, status, priority, opened_at, resolve_by, breached) \
+         values ($1, $2, 'Left from before', 'High', 'High', 'In Progress', 'P1', now() - interval '5 hours', now() - interval '1 hour', true)",
+    )
+    .bind(tenant)
+    .bind(old)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::raw_sql(include_str!("../packages/itsm/sql/001_targets.sql")).execute(&mut *tx).await.unwrap();
+    let kept: (String, Option<DateTime<Utc>>, i64) = sqlx::query_as(
+        "select i.resolve_state, t.breached_at, t.within_secs from e_incident i join record_target t on t.record_id = i.id and t.target = 'resolve' where i.id = $1",
+    )
+    .bind(old)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    tx.rollback().await.unwrap();
+    assert_eq!((kept.0.as_str(), kept.1.is_some(), kept.2), ("breached", true, 4 * 3600), "an open, late P1 stays breached on its own four hours");
 }

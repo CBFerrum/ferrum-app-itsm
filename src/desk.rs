@@ -1,30 +1,20 @@
 //! The service desk: catalog requests, incidents and problems.
 //!
-//! * A catalog request is due its offering's hours after it is asked; one that needs approval is
-//!   fulfilled only once approved, by a Change Manager who did not ask for it.
-//! * An incident's impact and urgency give its priority through the Priority Matrix records, its priority the hours
-//!   it is to be resolved in, and a P1 on a critical item is major. Resolved, it says how; one
-//!   resolved late, or still open past its time, has breached, and stays breached.
+//! * A catalog request one that needs approval is fulfilled only once approved, by a Change Manager
+//!   who did not ask for it.
+//! * An incident's impact and urgency give its priority through the Priority Matrix records, and a P1
+//!   on a critical item is major. Resolved, it says how. Its response and resolution times, and a
+//!   request's, are service targets of the platform (the entities' `targets`), not arithmetic here.
 //! * A known error has its workaround; a problem resolved says its root cause and resolves the
 //!   incidents still open under it.
 
 use crate::{at, obj};
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, Utc};
+use chrono::Utc;
 use ferrum_domain::util::{elevated, id, s};
-use ferrum_kernel::{Ctx, Doc, DocHook, Error, HookCtx, Kernel, Result, Tx};
+use ferrum_kernel::{Ctx, Doc, DocHook, Error, HookCtx, Result};
 use serde_json::{Value, json};
 use uuid::Uuid;
-
-/// The hours a priority is to be resolved in.
-pub(crate) fn hours(priority: &str) -> i64 {
-    match priority {
-        "P1" => 4,
-        "P2" => 8,
-        "P3" => 24,
-        _ => 72,
-    }
-}
 
 fn decides(ctx: &Ctx) -> bool {
     ctx.is_admin || ctx.roles.iter().any(|r| r == "Change Manager")
@@ -56,22 +46,14 @@ impl DocHook for RequestHook {
     }
 
     fn fills(&self) -> &'static [&'static str] {
-        &["requested_by", "caller_email", "due_at"]
+        &["requested_by", "caller_email"]
     }
 
     async fn before_validate(&self, hc: &mut HookCtx<'_>, doc: &mut Doc) -> Result<()> {
         people(hc, doc).await?;
+        crate::defaults::ensure_calendar(hc.tx, hc.ctx.tenant).await?;
         if s(doc, "requested_by").is_none() && !hc.ctx.email.is_empty() {
             doc.insert("requested_by".into(), json!(hc.ctx.email.to_lowercase()));
-        }
-        if s(doc, "due_at").is_none() {
-            let h: Option<i64> = sqlx::query_scalar("select fulfil_hours from e_service_offering where tenant_id = $1 and id = $2")
-                .bind(hc.ctx.tenant)
-                .bind(id(doc, "offering"))
-                .fetch_optional(&mut **hc.tx)
-                .await?
-                .flatten();
-            doc.insert("due_at".into(), json!((Utc::now() + Duration::hours(h.unwrap_or(24))).to_rfc3339()));
         }
         Ok(())
     }
@@ -140,11 +122,12 @@ impl DocHook for IncidentHook {
     }
 
     fn fills(&self) -> &'static [&'static str] {
-        &["matrix", "priority", "major", "caller_email", "opened_at", "resolve_by", "resolved_at", "breached"]
+        &["matrix", "priority", "major", "caller_email", "opened_at", "resolved_at"]
     }
 
     async fn before_validate(&self, hc: &mut HookCtx<'_>, doc: &mut Doc) -> Result<()> {
         people(hc, doc).await?;
+        crate::defaults::ensure_calendar(hc.tx, hc.ctx.tenant).await?;
         let row: Option<(Uuid, String)> = sqlx::query_as("select id, priority from e_priority_matrix where tenant_id = $1 and impact = $2 and urgency = $3")
             .bind(hc.ctx.tenant)
             .bind(s(doc, "impact").unwrap_or("Medium"))
@@ -154,7 +137,6 @@ impl DocHook for IncidentHook {
         let (matrix, p) = row.ok_or_else(|| Error::field("impact", "the Priority Matrix has no row for this impact and urgency"))?;
         let p = p.as_str();
         let opened = at(doc, "opened_at").unwrap_or_else(Utc::now);
-        let due = opened + Duration::hours(hours(p));
         let critical: Option<String> = sqlx::query_scalar("select criticality from e_configuration_item where tenant_id = $1 and id = $2")
             .bind(hc.ctx.tenant)
             .bind(id(doc, "ci"))
@@ -167,12 +149,7 @@ impl DocHook for IncidentHook {
         doc.insert("priority".into(), json!(p));
         doc.insert("major".into(), json!(p == "P1" && critical.as_deref() == Some("Critical")));
         doc.insert("opened_at".into(), json!(opened.to_rfc3339()));
-        doc.insert("resolve_by".into(), json!(due.to_rfc3339()));
         doc.insert("resolved_at".into(), resolved.map_or(Value::Null, |r| json!(r.to_rfc3339())));
-        let late = resolved.map_or(Utc::now() > due, |r| r > due);
-        let was = doc.get("breached").and_then(Value::as_bool).unwrap_or(false);
-        // A breach, once recorded, stays.
-        doc.insert("breached".into(), json!(late || was));
         Ok(())
     }
 
@@ -182,21 +159,6 @@ impl DocHook for IncidentHook {
         }
         Ok(())
     }
-}
-
-/// Incidents still open past their time, as of `now`, marked breached.
-pub(crate) async fn mark_breached(k: &Kernel, ctx: &Ctx, tx: &mut Tx, now: DateTime<Utc>) -> Result<()> {
-    let late: Vec<Uuid> = sqlx::query_scalar(
-        "select id from e_incident where tenant_id = $1 and status in ('New', 'In Progress', 'On Hold') and resolve_by < $2 and not coalesce(breached, false)",
-    )
-    .bind(ctx.tenant)
-    .bind(now)
-    .fetch_all(&mut **tx)
-    .await?;
-    for incident in late {
-        k.set_values_tx(ctx, tx, "Incident", incident, obj(json!({"breached": true}))).await?;
-    }
-    Ok(())
 }
 
 pub struct ProblemHook;

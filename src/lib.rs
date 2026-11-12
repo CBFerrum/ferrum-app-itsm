@@ -19,6 +19,7 @@
 mod assets;
 mod changes;
 mod cmdb;
+mod defaults;
 mod desk;
 mod discovery;
 mod notes;
@@ -71,7 +72,7 @@ pub fn reports() -> Vec<Arc<dyn ReportSource>> {
     vec![]
 }
 
-/// Upkeep: incidents still open past their time marked breached; items their discovery source no
+/// Upkeep: the working calendar the targets count on made when absent; items their discovery source no
 /// longer reports marked not seen; and, with the connector, what items show of their asset kept.
 pub async fn maintenance(k: &Kernel) -> Result<()> {
     maintenance_at(k, Utc::now()).await
@@ -92,7 +93,7 @@ pub async fn maintenance_at(k: &Kernel, now: DateTime<Utc>) -> Result<()> {
             let connected = schema.packages.iter().any(|p| p == CONNECTOR_PACKAGE);
             let ctx = Ctx::system(tenant, schema);
             let mut tx = k.db.tenant_tx(tenant).await?;
-            desk::mark_breached(k, &ctx, &mut tx, now).await?;
+            defaults::ensure_calendar(&mut tx, tenant).await?;
             discovery::mark_missing(k, &ctx, &mut tx, now).await?;
             if connected {
                 assets::refresh(k, &ctx, &mut tx).await?;

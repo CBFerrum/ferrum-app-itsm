@@ -167,20 +167,20 @@ async fn scenario() {
     assert_eq!((down["priority"].as_str(), down["major"].as_bool()), (Some("P1"), Some(true)), "P1 on a critical item");
     let opened = chrono::DateTime::parse_from_rfc3339(down["opened_at"].as_str().unwrap()).unwrap();
     let by = chrono::DateTime::parse_from_rfc3339(down["resolve_by"].as_str().unwrap()).unwrap();
-    assert_eq!(by - opened, Duration::hours(4));
+    assert!((by - opened - Duration::hours(4)).abs() < Duration::minutes(1), "a P1 is to be resolved in four hours: {opened} to {by}");
     let slow = t.insert(&desk, "Incident", incident("Report is slow", app, "Medium", "Low")).await;
     assert_eq!((slow["priority"].as_str(), slow["major"].as_bool()), (Some("P4"), Some(false)));
     let typo = uid(&t.insert(&desk, "Incident", incident("Typo on payslip", app, "Low", "Medium")).await["id"]);
     refused(t.set(&desk, "Incident", typo, json!({"status": "Resolved"})).await, "invalid", "says how");
     t.set(&desk, "Incident", typo, json!({"status": "Resolved", "resolution": "Fixed the template"})).await.unwrap();
     let fixed = t.get("Incident", typo).await;
-    assert!(fixed["resolved_at"].is_string() && fixed["breached"] == false, "resolved in time: {fixed:?}");
+    assert!(fixed["resolved_at"].is_string() && fixed["resolve_state"] == "met", "resolved in time: {fixed:?}");
     t.set(&desk, "Incident", down_id, json!({"impact": "High", "urgency": "Medium"})).await.unwrap();
     assert_eq!(t.get("Incident", down_id).await["priority"], "P2", "its priority follows its impact and urgency");
     t.set(&desk, "Incident", down_id, json!({"urgency": "High"})).await.unwrap();
-    ferrum_app_itsm::maintenance_at(&k, Utc::now() + Duration::hours(5)).await.unwrap();
-    assert_eq!(t.get("Incident", down_id).await["breached"], true, "a P1 open five hours on");
-    assert_eq!(t.get("Incident", uid(&slow["id"])).await["breached"], false, "a P4 has three days");
+    k.sweep_targets_at(Utc::now() + Duration::hours(5)).await.unwrap();
+    assert_eq!(t.get("Incident", down_id).await["resolve_state"], "breached", "a P1 open five hours on");
+    assert_eq!(t.get("Incident", uid(&slow["id"])).await["resolve_state"], "running", "a P4 has three days");
 
     // ───────────── problems ─────────────
     let problem = uid(&t.insert(&desk, "Problem", json!({"title": "Payroll database locks", "ci": db.to_string()})).await["id"]);
@@ -193,7 +193,7 @@ async fn scenario() {
     let after = t.get("Incident", down_id).await;
     assert_eq!(after["status"], "Resolved", "resolved with its problem");
     assert!(after["resolution"].as_str().unwrap().contains("A missing index"), "{after:?}");
-    assert_eq!(after["breached"], true, "late is late");
+    assert_eq!(after["resolve_state"], "met_late", "late is late");
     assert_eq!(t.get("Incident", uid(&slow["id"])).await["status"], "Resolved");
 
     // ───────────── changes ─────────────
