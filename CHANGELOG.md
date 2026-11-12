@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.1
+
+The interface's own screens for what 0.3 and 0.4 added (generic record forms still show every field). Rebuilt with Ferrum-Frontend as it is on its main.
+
+- **The desk** (`/`): your queue and your team's (incidents, requests and their tasks; a team is the assignment groups you are a member of), what waits for your decision (the platform's approvals asked of you, and, for a Change Manager, what one Change Manager decides), the targets breached or at risk across incidents, requests and tasks, a banner for each major incident with its next update, and a quick report whose title is matched to known errors as it is typed (`GET /suggest`). A person with no desk (the portal's IT Self Service, a Requester) sees only their own, and a part they may not read is left out.
+- **Change** (`/change/new`, `/change/{id}`): the change as a flow (type, item and what it also affects, the risk questionnaire, plans, window). The risk, impact, route and who approves are asked of the server as the form is filled (`POST /ItChange/_calc`), so the score and the route shown are the ones saving keeps; collisions and a freeze are said in the server's words, and a freeze that will refuse the save is said before it. Submitted, it shows the platform's approval: who was asked, who answered (a stand-in named), N of M each step needs, reminders and escalations, and Approve and Reject for an approver. Then Done, the review, Close and It failed. A change is raised from an approved template, or the window and title are asked of the template's own action.
+- **Change calendar** (`/calendar`): the month as a grid and as a list from `GET /calendar`, a collision and a freeze marked in words, the days of a freeze shaded, filtered by a service or item.
+- **Problems** (`/problems`, `/problem/{id}`) and **major incidents** (`/major/{id}`): the list by open, known error and resolved with open incidents counted; a problem's root cause, workaround and what the portal will show, its incidents linked and unlinked, and resolved with it (`resolve_linked_incidents`); a major incident declared, updated and ended with who will be told and the message as it will read.
+- **Catalog** (`/catalog`, `/catalog/{id}`, `/request/{id}`): the items as a requester sees them (also a portal person, who reads only the offerings, the published known errors and their own requests), an item's form from its questions (a question asked only when an earlier one has its answer), a request with its approval, who decides, its answers and its fulfilment tasks, each task done by pressing Done. The tasks are left out, and said to be, for one who may not read them.
+- **Configuration items** (`/items`, `/ci/{id}`): the items, the classes with their attributes and the relation types with where a failure flows; an item with its attributes, relations and what relates to it, what a failure of it reaches as a tree by ring (to the depth the settings allow, worked out from the relations with the server's rules), and the incidents and changes on it.
+- The shell's Create menu opens the change flow and the catalog.
+- Not done: the major incident's message is shown as the package ships it, not as a workspace edited it (no route gives a screen a template); the impact tree is worked out in the page from the relations the person may read (a route that gave it would save the requests); the calendar's items filter is by name; new words are in English in the Arabic and Hindi catalogs.
+
 ## 0.4.0
 
 The change board the audit found missing, problems and known errors, catalogue approvals and tasks, and classes and relation types for the configuration database. Needs a platform with approval before an action (`on: {action}`, BD-34).
