@@ -140,7 +140,7 @@ async fn scenario() {
     let reset = uid(&t.insert(&cfg, "ServiceOffering", json!({"offering_name": "Password reset", "fulfil_hours": 1})).await["id"]);
     let gone = uid(&t.insert(&cfg, "ServiceOffering", json!({"offering_name": "Fax line", "active": false})).await["id"]);
     let before = Utc::now();
-    let ask = t.insert(&req, "CatalogRequest", json!({"offering": laptop.to_string(), "details": "A lighter one"})).await;
+    let ask = t.insert(&req, "CatalogRequest", json!({"offering": laptop.to_string()})).await;
     let ask_id = uid(&ask["id"]);
     assert_eq!(ask["requested_by"], "ann@acme.test");
     let due = chrono::DateTime::parse_from_rfc3339(ask["due_at"].as_str().unwrap()).unwrap().with_timezone(&Utc);

@@ -275,7 +275,7 @@ async fn scenario() {
     // She asks for something from the catalog, and follows it.
     let offerings = t.k.list(&ann, "ServiceOffering", &Default::default()).await.unwrap().rows;
     assert!(offerings.iter().any(|o| o["offering_name"] == "VPN access"), "the catalog is hers to read");
-    let wanted = t.insert(&ann, "CatalogRequest", json!({"offering": offer.to_string(), "details": "From home on Mondays"})).await;
+    let wanted = t.insert(&ann, "CatalogRequest", json!({"offering": offer.to_string()})).await;
     assert_eq!(wanted["caller_email"], "ann@acme.test");
     let followed = t.k.list(&ann, "CatalogRequest", &Default::default()).await.unwrap().rows;
     assert_eq!(followed.len(), 1, "only her own request");
@@ -313,4 +313,75 @@ async fn scenario() {
         thread.iter().any(|n| n["body"].as_str().is_some_and(|b| b.contains("It broke again")) && n["visibility"] == "Visible to Caller"),
         "her reason is in the thread"
     );
+
+    // ───────────── 5. catalogue items with their own form ─────────────
+    let laptop_item = uid(&t
+        .insert(
+            &cfg,
+            "ServiceOffering",
+            json!({"offering_name": "New laptop", "fulfilment_group": group.to_string(), "questions": [
+                {"label": "Model", "qtype": "Choice", "required": true, "options": "T14, X1"},
+                {"label": "Needs a dock", "qtype": "Yes/No"},
+                {"label": "Dock type", "qtype": "Choice", "options": "USB-C, Thunderbolt", "only_when": "Needs a dock", "only_when_answer": "Yes", "required": true},
+                {"label": "Needed by", "qtype": "Date"},
+                {"label": "Monitors", "qtype": "Number"}]}),
+        )
+        .await["id"]);
+    refused(
+        t.k.insert(&cfg, "ServiceOffering", obj(json!({"offering_name": "Bad", "questions": [{"label": "A", "only_when": "B", "only_when_answer": "x"}]})))
+            .await,
+        "invalid",
+        "earlier question",
+    );
+    refused(
+        t.k.insert(
+            &cfg,
+            "ServiceOffering",
+            obj(json!({"offering_name": "Bad2", "questions": [{"label": "A", "qtype": "Choice", "options": "x"}, {"label": "a"}]})),
+        )
+        .await,
+        "invalid",
+        "same label",
+    );
+    let order = |answers: Value| json!({"offering": laptop_item.to_string(), "answers": answers});
+    let ok = t.insert(&ann, "CatalogRequest", order(json!([{"question": "Model", "answer": "T14"}, {"question": "Needs a dock", "answer": "Yes"}, {"question": "Dock type", "answer": "USB-C"}, {"question": "Monitors", "answer": "2"}]))).await;
+    assert_eq!(ok["assignment_group"], group.to_string(), "to the item's fulfilment group");
+    assert_eq!(ok["answers"][0]["question"], "Model", "shown with their labels");
+    refused(t.k.insert(&ann, "CatalogRequest", obj(order(json!([])))).await, "invalid", "Model needs an answer");
+    refused(
+        t.k.insert(&ann, "CatalogRequest", obj(order(json!([{"question": "Model", "answer": "T14"}, {"question": "Needs a dock", "answer": "Yes"}])))).await,
+        "invalid",
+        "Dock type needs an answer",
+    );
+    refused(t.k.insert(&ann, "CatalogRequest", obj(order(json!([{"question": "Model", "answer": "Z9"}])))).await, "invalid", "Model is one of T14, X1");
+    refused(
+        t.k.insert(&ann, "CatalogRequest", obj(order(json!([{"question": "Model", "answer": "X1"}, {"question": "Monitors", "answer": "two"}])))).await,
+        "invalid",
+        "a number",
+    );
+    refused(
+        t.k.insert(&ann, "CatalogRequest", obj(order(json!([{"question": "Model", "answer": "X1"}, {"question": "Needed by", "answer": "soon"}])))).await,
+        "invalid",
+        "a date",
+    );
+    refused(
+        t.k.insert(&ann, "CatalogRequest", obj(order(json!([{"question": "Model", "answer": "X1"}, {"question": "Dock type", "answer": "USB-C"}])))).await,
+        "invalid",
+        "only when Needs a dock is Yes",
+    );
+    refused(
+        t.k.insert(&ann, "CatalogRequest", obj(order(json!([{"question": "Model", "answer": "X1"}, {"question": "Colour", "answer": "red"}])))).await,
+        "invalid",
+        "not a question of this offering",
+    );
+    // What requests carried before the offerings had questions stays with them, as a note.
+    let mut tx = k.db.tenant_tx(tenant).await.unwrap();
+    sqlx::query("select set_config('ferrum.system', 'on', true)").execute(&mut *tx).await.unwrap();
+    sqlx::raw_sql("alter table e_catalog_request add column details text").execute(&mut *tx).await.unwrap();
+    sqlx::query("update e_catalog_request set details = 'A lighter one' where id = $1").bind(uid(&ok["id"])).execute(&mut *tx).await.unwrap();
+    sqlx::raw_sql(include_str!("../packages/itsm/sql/002_request_details.sql")).execute(&mut *tx).await.unwrap();
+    let kept: (String, String) =
+        sqlx::query_as("select body, visibility from e_it_note where request = $1").bind(uid(&ok["id"])).fetch_one(&mut *tx).await.unwrap();
+    tx.rollback().await.unwrap();
+    assert_eq!((kept.0.as_str(), kept.1.as_str()), ("A lighter one", "Internal"));
 }
