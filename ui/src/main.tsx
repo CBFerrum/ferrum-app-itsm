@@ -57,6 +57,8 @@ const router = createBrowserRouter(
         { path: "catalog", lazy: () => import("./Catalog").then((m) => ({ Component: m.CatalogRoute })) },
         { path: "catalog/:id", lazy: () => import("./Catalog").then((m) => ({ Component: m.OfferingRoute })) },
         { path: "request/:id", lazy: () => import("./Catalog").then((m) => ({ Component: m.RequestRoute })) },
+        { path: "items", lazy: () => import("./Items").then((m) => ({ Component: m.ItemsRoute })) },
+        { path: "ci/:id", lazy: () => import("./Items").then((m) => ({ Component: m.ItemRoute })) },
         { path: "e/:entity", lazy: page("ListView") },
         { path: "e/:entity/:id", lazy: page("FormView") },
         { path: "r/:name", lazy: page("ReportView") },
