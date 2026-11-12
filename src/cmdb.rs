@@ -32,18 +32,25 @@ async fn above(tx: &mut Tx, tenant: Uuid, on: Uuid) -> Result<Vec<Uuid>> {
     .await?)
 }
 
-/// Every item that depends on or runs on `ci`, however far round, by name.
-pub(crate) async fn impact(tx: &mut Tx, tenant: Uuid, ci: Uuid) -> Result<Vec<String>> {
+/// Every item that depends on or runs on `ci`, up to `depth` relations out and never twice, by name.
+pub(crate) async fn impact(tx: &mut Tx, tenant: Uuid, ci: Uuid, depth: i64) -> Result<Vec<String>> {
     let mut seen = HashSet::from([ci]);
-    let mut queue = VecDeque::from([ci]);
+    let mut frontier = vec![ci];
     let mut out = vec![];
-    while let Some(next) = queue.pop_front() {
-        for up in above(tx, tenant, next).await? {
-            if seen.insert(up) {
-                queue.push_back(up);
-                out.push(up);
+    for _ in 0..depth {
+        let mut next = vec![];
+        for n in frontier {
+            for up in above(tx, tenant, n).await? {
+                if seen.insert(up) {
+                    next.push(up);
+                    out.push(up);
+                }
             }
         }
+        if next.is_empty() {
+            break;
+        }
+        frontier = next;
     }
     let mut names: Vec<String> = sqlx::query_scalar("select ci_name from e_configuration_item where tenant_id = $1 and id = any($2)")
         .bind(tenant)

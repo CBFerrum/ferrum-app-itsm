@@ -86,3 +86,49 @@ async fn seed_rows(k: &Kernel, system: &Ctx, tx: &mut Tx) -> Result<()> {
     }
     Ok(())
 }
+
+/// Whether the workspace is one upgraded from an earlier release rather than new: it has made its notifications
+/// already (release 0.3 did, once), or it has changes. Asked before `ensure_defaults` makes them for a new one.
+pub(crate) async fn upgraded(k: &Kernel, ctx: &Ctx) -> Result<bool> {
+    let system = sys(ctx);
+    let mut tx = k.db.tenant_tx(ctx.tenant).await?;
+    let settings = k.find_tx(&system, &mut tx, "ItsmSettings", &[], None, 1).await?;
+    let changes: bool = sqlx::query_scalar("select exists (select 1 from e_it_change where tenant_id = $1)").bind(ctx.tenant).fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(changes || settings.first().and_then(|s| s.get("defaults_made")).and_then(Value::as_bool) == Some(true))
+}
+
+/// What release 0.4 adds, made once for the workspace (the settings record notes it): the package's seed rows it
+/// lacks (change types, their groups, the risk questions), the type of each change it already holds, and the new
+/// settings' starting values. A **new** workspace starts on the change board and on offering to resolve a problem's
+/// incidents; one **upgraded** from 0.3 keeps what it ran (one Change Manager decides, a resolved problem resolves
+/// its incidents) because both settings are left empty, which reads as that, until an administrator chooses.
+/// A workspace that already set either itself is left as it set it.
+pub(crate) async fn ensure_board(k: &Kernel, ctx: &Ctx, upgraded: bool) -> Result<()> {
+    let system = sys(ctx);
+    let mut tx = k.db.tenant_tx(ctx.tenant).await?;
+    let settings = k.find_tx(&system, &mut tx, "ItsmSettings", &[], None, 1).await?;
+    let Some(settings) = settings.first() else { return Ok(()) };
+    if settings.get("board_defaults_made").and_then(Value::as_bool) == Some(true) {
+        return Ok(());
+    }
+    seed_rows(k, &system, &mut tx).await?;
+    sqlx::query(
+        "update e_it_change c set change_type = t.id from e_change_type t where t.tenant_id = c.tenant_id and t.type_name = c.kind and c.change_type is null and c.tenant_id = $1",
+    )
+    .bind(ctx.tenant)
+    .execute(&mut *tx)
+    .await?;
+    let mut set = json!({"board_defaults_made": true});
+    if !upgraded {
+        for (field, value) in [("change_approval", "Change Board"), ("problem_closes_incidents", "Offer")] {
+            if settings.get(field).is_none_or(Value::is_null) {
+                set[field] = json!(value);
+            }
+        }
+    }
+    let id = settings.get("id").and_then(Value::as_str).and_then(|i| i.parse().ok()).ok_or_else(|| ferrum_kernel::Error::internal("settings without an id"))?;
+    k.set_values_tx(&system, &mut tx, "ItsmSettings", id, obj(set)).await?;
+    tx.commit().await?;
+    Ok(())
+}

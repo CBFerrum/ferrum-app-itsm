@@ -18,6 +18,7 @@
 
 use crate::obj;
 use chrono::{DateTime, Duration, Utc};
+use ferrum_domain::reports::ReportSource;
 use ferrum_domain::util::{elevated, id, rows, s};
 use ferrum_kernel::{Ctx, Doc, Error, Filter, Kernel, Result, Site, SiteRequest, SiteResponse, Tx, notify};
 use serde::Deserialize;
@@ -93,6 +94,12 @@ pub struct DiscoverySite;
 impl Site for DiscoverySite {
     async fn handle(&self, k: &Kernel, req: SiteRequest) -> Result<SiteResponse> {
         let user = req.user.as_ref().ok_or_else(|| Error::Unauthorized("sign in first".into()))?;
+        // The change calendar, as the report gives it: `GET /calendar?from_date=&to_date=`.
+        if (req.method.as_str(), req.path.trim_matches('/')) == ("GET", "calendar") {
+            let params = req.query.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect();
+            let out = crate::reports::ItsmReports.run(k, user, "itsm_change_calendar", &params).await?;
+            return Ok(SiteResponse::json(200, &out));
+        }
         if (req.method.as_str(), req.path.trim_matches('/')) != ("POST", "discovery") {
             return Err(Error::NotFound(format!("IT Services endpoint {} {}", req.method, req.path)));
         }
