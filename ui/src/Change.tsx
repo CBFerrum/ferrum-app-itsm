@@ -11,8 +11,8 @@ import { Alert, Badge, Button, Field, FormSkeleton, PageHead, PageSplit, PageSta
 import { LinkInput, useLinkTitle } from "@ferrum/records";
 import { ApprovalState, useAsked } from "./Approval";
 import { derive, change, make, record, rows, run, type Row, text, titleOf } from "./data";
-import { emptyDraft, flagLines, fromRow, inFreeze, levelOf, missing, routeLines, toBody, windowWords, type Draft, type Level } from "./draft";
-import { Ask, Await, Nav, Refused, useRights, useSettings, type Param } from "./ui";
+import { emptyDraft, flagLines, fromRow, inFreeze, levelOf, missing, routeLines, shortages, toBody, windowWords, type Draft, type Level } from "./draft";
+import { Ask, Await, Gaps, Nav, Refused, useRights, useSettings, type Gap, type Param } from "./ui";
 import { when } from "./desk";
 
 const LEVELS = (): [Level, string][] => [["Low", t("Low")], ["Medium", t("Medium")], ["High", t("High")]];
@@ -47,6 +47,28 @@ function Chip({ id, onRemove }: { id: string; onRemove: () => void }) {
 }
 
 // ── the flow ──
+
+/** Where each field the server or the form names is on the page: its control, its words and the step that holds it. */
+const SPOTS = (): Record<string, { id: string; label: string; step: number }> => ({
+  title: { id: "itsm-ch-title", label: t("Title"), step: 1 },
+  change_type: { id: "itsm-ch-type", label: t("Type"), step: 1 },
+  ci: { id: "itsm-ch-ci", label: t("Item it changes"), step: 1 },
+  risk_answers: { id: "itsm-ch-risk", label: t("2. Risk and impact"), step: 2 },
+  change_plan: { id: "itsm-ch-plan", label: t("Plan"), step: 3 },
+  backout_plan: { id: "itsm-ch-back", label: t("Back-out plan"), step: 3 },
+  test_plan: { id: "itsm-ch-test", label: t("Test plan"), step: 3 },
+  planned_start: { id: "itsm-ch-start", label: t("Starts"), step: 4 },
+  planned_end: { id: "itsm-ch-end", label: t("Ends"), step: 4 },
+});
+
+/** A step's title, marked when it holds a field in error. */
+function Step({ id, children, bad }: { id: string; children: string; bad: boolean }) {
+  return (
+    <h2 id={id} className="section-title" tabIndex={-1}>
+      {children} {bad && <Badge tone="red">{t("Needs attention")}</Badge>}
+    </h2>
+  );
+}
 
 /** A raised-from-template start: an approved template, the title and the window, and the change it makes opens as a draft. */
 function FromTemplate() {
@@ -103,6 +125,7 @@ function Editor({ row }: { row?: Row }) {
   const qc = useQueryClient();
   const [d, setD] = useState<Draft>(() => (row ? fromRow(row) : emptyDraft()));
   const [said, setSaid] = useState<Record<string, string>>({});
+  const [turn, setTurn] = useState(0);
   const types = useTypes();
   const questions = useQuestions();
   const settings = useSettings();
@@ -138,19 +161,29 @@ function Editor({ row }: { row?: Row }) {
       go(`/change/${saved.id}`, { replace: !row });
     },
     onError: (e) => {
-      if (e instanceof ApiError) setSaid(Object.fromEntries(e.fields.map((f) => [f.field, f.message])));
+      if (e instanceof ApiError) (setSaid(Object.fromEntries(e.fields.map((f) => [f.field, f.message]))), setTurn((n) => n + 1));
     },
   });
   const press = (andSubmit: boolean) => (e?: FormEvent) => {
     e?.preventDefault();
     if (save.isPending) return;
     const gaps = missing(d, !!type && type.path !== "Pre-approved");
-    if (gaps.length) return setSaid(Object.fromEntries(gaps.map((g) => [g.field, g.word])));
+    if (gaps.length) return (setSaid(Object.fromEntries(gaps.map((g) => [g.field, g.word]))), setTurn((n) => n + 1));
     save.mutate(andSubmit);
   };
   // What the server said that no field here carries.
   const loose = save.error instanceof ApiError && save.error.fields.length && save.error.fields.every((f) => f.field in d || f.field === "risk_answers") ? null : save.error;
 
+  const spots = SPOTS();
+  const order = Object.keys(spots);
+  const gaps: Gap[] = Object.keys(said)
+    .filter((f) => f in spots)
+    .sort((a, b) => order.indexOf(a) - order.indexOf(b))
+    .map((f) => ({ id: spots[f].id, label: spots[f].label, message: said[f] }));
+  const stepBad = (n: number) => Object.keys(said).some((f) => spots[f]?.step === n);
+  const short = shortages(derived ?? {}, type);
+  const groupRights = useRights("ItGroup");
+  const canAddMembers = !!groupRights && groupRights.write !== "none";
   const answered = Object.values(d.answers).some(Boolean);
   const lines = flagLines(derived?.window_flags);
   const refuses = settings.data?.freeze_action !== "Warn" && type?.path !== "Emergency";
@@ -165,10 +198,11 @@ function Editor({ row }: { row?: Row }) {
       <PageSplit
         main={
           <form className="stack" onSubmit={press(false)} noValidate>
+            <Gaps gaps={gaps} turn={turn} />
             <section className="card card-pad stack" aria-labelledby="itsm-ch-what">
-              <h2 id="itsm-ch-what" className="section-title">
+              <Step id="itsm-ch-what" bad={stepBad(1)}>
                 {t("1. What changes")}
-              </h2>
+              </Step>
               <Field label={t("Title")} htmlFor="itsm-ch-title" required error={said.title}>
                 <input id="itsm-ch-title" className="input" value={d.title} onChange={(e) => set("title", e.target.value)} />
               </Field>
@@ -200,9 +234,9 @@ function Editor({ row }: { row?: Row }) {
             </section>
 
             <section className="card card-pad stack" aria-labelledby="itsm-ch-risk">
-              <h2 id="itsm-ch-risk" className="section-title">
+              <Step id="itsm-ch-risk" bad={stepBad(2)}>
                 {t("2. Risk and impact")}
-              </h2>
+              </Step>
               <Refused error={questions.error} />
               {questions.isPending && <FormSkeleton fields={3} />}
               {questions.data && !questions.data.length && <p className="muted">{t("The workspace has no risk questions: pick the risk by hand.")}</p>}
@@ -233,9 +267,9 @@ function Editor({ row }: { row?: Row }) {
             </section>
 
             <section className="card card-pad stack" aria-labelledby="itsm-ch-plans">
-              <h2 id="itsm-ch-plans" className="section-title">
+              <Step id="itsm-ch-plans" bad={stepBad(3)}>
                 {t("3. Plans")}
-              </h2>
+              </Step>
               <Field label={t("Plan")} htmlFor="itsm-ch-plan" error={said.change_plan}>
                 <textarea id="itsm-ch-plan" className="textarea" rows={4} value={d.change_plan} onChange={(e) => set("change_plan", e.target.value)} />
               </Field>
@@ -248,9 +282,9 @@ function Editor({ row }: { row?: Row }) {
             </section>
 
             <section className="card card-pad stack" aria-labelledby="itsm-ch-window">
-              <h2 id="itsm-ch-window" className="section-title">
+              <Step id="itsm-ch-window" bad={stepBad(4)}>
                 {t("4. Window")}
-              </h2>
+              </Step>
               <div className="form-grid">
                 <Field label={t("Starts")} htmlFor="itsm-ch-start" required error={said.planned_start}>
                   <input id="itsm-ch-start" className="input" type="datetime-local" value={d.planned_start} onChange={(e) => set("planned_start", e.target.value)} />
@@ -272,7 +306,7 @@ function Editor({ row }: { row?: Row }) {
               <Button variant="primary" type="submit" loading={save.isPending && !save.variables} disabled={save.isPending}>
                 {t("Save draft")}
               </Button>
-              <Button onClick={() => press(true)()} loading={save.isPending && !!save.variables} disabled={save.isPending}>
+              <Button onClick={() => press(true)()} loading={save.isPending && !!save.variables} disabled={save.isPending || short.length > 0} aria-describedby={short.length ? "itsm-ch-short" : undefined}>
                 {t("Save and submit")}
               </Button>
             </div>
@@ -315,6 +349,16 @@ function Editor({ row }: { row?: Row }) {
                   {routeLines(derived, type).map((l) => (
                     <p key={l}>{isolate(l)}</p>
                   ))}
+                  {short.map((g) => (
+                    <Alert key={g.group} tone="warning">
+                      <span id={short[0] === g ? "itsm-ch-short" : undefined}>
+                        {g.have === 0 ? t("{group} has no members, so no one can approve this change yet.", { group: g.group }) : t("{group} has {have} members and this type asks {need} of them to approve.", { group: g.group, have: g.have, need: g.need })}{" "}
+                        {canAddMembers ? t("You can add them on the group.") : t("An administrator or a Configuration Manager adds them on the group.")}{" "}
+                        {g.groupId ? <Link to={`/e/ItGroup/${g.groupId}`}>{t("Open {group}", { group: g.group })}</Link> : null}
+                      </span>
+                    </Alert>
+                  ))}
+                  {short.length > 0 && <p className="muted">{t("You can save the draft; it cannot be submitted until then.")}</p>}
                 </div>
                 {derived.impacted ? (
                   <div className="stack">

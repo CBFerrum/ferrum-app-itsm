@@ -1,6 +1,6 @@
 id: itsm
 name: IT Services
-version: 0.4.1
+version: 0.4.2
 publisher: cbferrum
 summary: "Configuration items with classes and relations, a service catalog with approvals and tasks, incidents with targets, problems and known errors, and changes through a board, calendar and freezes"
 description: README.md

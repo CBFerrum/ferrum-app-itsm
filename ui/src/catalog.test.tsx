@@ -85,6 +85,9 @@ describe("an item's form", () => {
     await act(async () => byText(host, "button", "Ask for it")?.click());
     await until(() => (host.textContent ?? "").includes("Which laptop? needs an answer"));
     expect(server.seen.some((s) => s.line.startsWith("POST"))).toBe(false);
+    // The refusal is listed at the top and the cursor is in the first field in error.
+    expect(host.textContent).toContain("Not saved. These need attention:");
+    expect(document.activeElement?.id).toBe("itsm-of-0");
     const user = userEvent.setup();
     await act(async () => user.selectOptions(host.querySelector<HTMLSelectElement>("#itsm-of-0")!, "Developer"));
     await until(() => (host.textContent ?? "").includes("Why a developer laptop?"));

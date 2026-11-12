@@ -55,6 +55,54 @@ export function Await<T>({ q, skeleton, children }: { q: UseQueryResult<T>; skel
   return <>{children(q.data)}</>;
 }
 
+// ── a refused save, made to be seen ──
+
+/** Moves to a field and puts the cursor in it: a refused save has to be seen where the person is, not far down the page. */
+export function focusField(id: string) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView?.({ block: "center" });
+  el.focus({ preventScroll: true });
+}
+
+export interface Gap {
+  /** The control's id. */
+  id: string;
+  label: string;
+  message: string;
+}
+
+/** What a refused save lists at the top, each line a link to its field; the first field is focused as it appears. */
+export function Gaps({ gaps, turn = 0 }: { gaps: Gap[]; turn?: number }) {
+  // `turn` counts the refusals, so the same refusal pressed again takes the focus again.
+  const key = `${turn}|${gaps.map((g) => `${g.id}:${g.message}`).join("|")}`;
+  useEffect(() => {
+    if (gaps.length) focusField(gaps[0].id);
+  }, [key]);
+  if (!gaps.length) return null;
+  return (
+    <Alert tone="error">
+      <strong>{t("Not saved. These need attention:")}</strong>
+      <ul className="stack">
+        {gaps.map((g) => (
+          <li key={g.id}>
+            <a
+              href={`#${g.id}`}
+              onClick={(e) => {
+                e.preventDefault();
+                focusField(g.id);
+              }}
+            >
+              {isolate(g.label)}
+            </a>
+            : {isolate(g.message)}
+          </li>
+        ))}
+      </ul>
+    </Alert>
+  );
+}
+
 /** The server's plain refusal, as it said it. */
 export function Refused({ error }: { error: unknown }) {
   return error ? <Alert tone="error">{isolate(refusal(error))}</Alert> : null;
@@ -115,7 +163,9 @@ export function Ask({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const [turn, setTurn] = useState(0);
   useEffect(() => setErrors({}), [values]);
+  const gaps = params.filter((p) => errors[p.name]).map((p) => ({ id: `ask-${p.name}`, label: p.label, message: errors[p.name] }));
   const set = (name: string, v: string | boolean) => setValues((cur) => ({ ...cur, [name]: v }));
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -123,6 +173,7 @@ export function Ask({
     const missing = unanswered(params, values);
     if (missing.length) {
       setErrors(Object.fromEntries(missing.map((p) => [p.name, t("is needed")])));
+      setTurn((n) => n + 1);
       return;
     }
     setBusy(true);
@@ -132,6 +183,7 @@ export function Ask({
     } catch (err) {
       const own = err instanceof ApiError ? err.fields.filter((f) => params.some((p) => p.name === f.field)) : [];
       setErrors(Object.fromEntries(own.map((f) => [f.field, f.message])));
+      setTurn((n) => n + 1);
       if (!own.length || (err instanceof ApiError && own.length < err.fields.length)) setError(err);
       setBusy(false);
     }
@@ -181,6 +233,7 @@ export function Ask({
     >
       <form id="itsm-ask" className="stack" onSubmit={submit} noValidate>
         <Refused error={error} />
+        <Gaps gaps={gaps} turn={turn} />
         {params.map((p) =>
           p.kind === "check" ? (
             <label key={p.name} className="check-field">
