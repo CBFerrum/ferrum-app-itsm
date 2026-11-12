@@ -25,7 +25,7 @@ const incidents = [
 ];
 
 const staff = [
-  meta({ Incident: all, CatalogRequest: all, RequestTask: all, ItChange: all, ItGroup: all, ConfigurationItem: all, ServiceOffering: all }),
+  meta({ Incident: all, CatalogRequest: all, RequestTask: all, ItChange: all, ItGroup: all, ConfigurationItem: all, ServiceOffering: all, Problem: all }),
   me(["Service Desk", "Change Manager"]),
   ["GET", "/api/approvals", { to_decide: [{ request: "ap1", entity: "ItChange", record: "ch1", title: "Core switch", action: "approve_change", requester: "u9", requested_at: "2026-12-01T09:00:00Z" }], awaiting_others: [] }],
   ["GET", "/api/app/itsm/suggest", { suggestions: [{ id: "k1", title: "Printer queue stuck", workaround: "Restart the spooler" }] }],
@@ -56,6 +56,7 @@ describe("the desk", () => {
     expect(text).toContain("INC-3 Payments are failing");
     expect(text).toContain("next update was due");
     expect(host.querySelector('a[href="/major/i3"]')).toBeTruthy();
+    expect(["/calendar", "/problems", "/catalog", "/items"].every((to) => host.querySelector(`nav a[href="${to}"]`))).toBe(true);
   });
 
   it("reports an incident from the desk, with the known problems that fit as the title is typed", async () => {
@@ -97,6 +98,9 @@ describe("the desk", () => {
     expect(text).not.toContain("Your team's incidents");
     expect(text).not.toContain("Report an incident");
     expect(host.querySelector('a[href="/e/Incident/new"]')).toBeTruthy();
+    // Only the screens they may read are offered.
+    expect(host.querySelector('nav a[href="/catalog"]')).toBeTruthy();
+    expect(["/problems", "/items", "/calendar"].some((to) => host.querySelector(`nav a[href="${to}"]`))).toBe(false);
   });
 
   it("says it is not theirs to see when nothing may be read, and tries again when it failed", async () => {

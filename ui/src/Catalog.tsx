@@ -115,9 +115,9 @@ function Form({ offering }: { offering: Row }) {
                   {q.qtype === "Choice" || q.qtype === "Yes/No" ? (
                     <select id={id} className="select" value={v} onChange={(e) => set(q.label, e.target.value)}>
                       <option value="">{t("Choose…")}</option>
-                      {(q.qtype === "Yes/No" ? ["Yes", "No"] : q.options).map((o) => (
+                      {(q.qtype === "Yes/No" ? ([["Yes", t("Yes")], ["No", t("No")]] as const) : q.options.map((o) => [o, o] as const)).map(([o, word]) => (
                         <option key={o} value={o}>
-                          {isolate(o)}
+                          {isolate(word)}
                         </option>
                       ))}
                     </select>

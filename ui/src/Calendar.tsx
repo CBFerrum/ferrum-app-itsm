@@ -66,6 +66,7 @@ export function CalendarRoute() {
   const put = (next: Record<string, string>) => setParams((cur) => ({ ...Object.fromEntries(cur), ...next }), { replace: true });
   const label = formatMoment(new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)) - 1, 15)), { month: "long", year: "numeric" });
   const weekday = new Intl.DateTimeFormat(currentLanguage(), { weekday: "short", timeZone: "UTC" });
+  const dayName = new Intl.DateTimeFormat(currentLanguage(), { dateStyle: "full", timeZone: "UTC" });
 
   return (
     <PageStack>
@@ -157,9 +158,9 @@ export function CalendarRoute() {
               </StatePanel>
             );
           return (
-            <div className="cal-grid" role="grid" aria-label={label}>
+            <section className="cal-grid" aria-label={label}>
               {days.slice(0, 7).map((d) => (
-                <div key={d} className="cal-head" role="columnheader">
+                <div key={d} className="cal-head" aria-hidden="true">
                   {weekday.format(new Date(`${d}T12:00:00Z`))}
                 </div>
               ))}
@@ -167,7 +168,7 @@ export function CalendarRoute() {
                 const list = perDay.get(d) ?? [];
                 const why = frozen.get(d);
                 return (
-                  <div key={d} className="cal-day" role="gridcell" data-outside={d.startsWith(month) ? undefined : ""} data-freeze={why ? "" : undefined} data-today={d === today ? "" : undefined} data-empty={list.length || why ? undefined : ""}>
+                  <div key={d} className="cal-day" role="group" aria-label={dayName.format(new Date(`${d}T12:00:00Z`))} data-outside={d.startsWith(month) ? undefined : ""} data-freeze={why ? "" : undefined} data-today={d === today ? "" : undefined} data-empty={list.length || why ? undefined : ""}>
                     <span className="cal-num">{Number(d.slice(8))}</span>
                     {why && <span className="cal-note">{t("Freeze: {why}", { why: isolate(why.join(", ")) })}</span>}
                     {list.map((e) => (
@@ -180,7 +181,7 @@ export function CalendarRoute() {
                   </div>
                 );
               })}
-            </div>
+            </section>
           );
         }}
       </Await>
