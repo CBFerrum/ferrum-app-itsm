@@ -23,6 +23,7 @@ mod defaults;
 mod desk;
 mod discovery;
 mod notes;
+mod reports;
 
 use chrono::{DateTime, Utc};
 use ferrum_domain::reports::ReportSource;
@@ -68,9 +69,9 @@ pub const CONNECTOR_PACKAGE: &str = "itsm_assets";
 /// `itsm_assets`, its code this crate's. It ships with IT Services.
 pub const CONNECTOR_MANIFEST: &str = include_str!("../connectors/assets/app.yaml");
 
-/// This app's reports: none of its own yet.
+/// This app's reports (listed in its menu, `packages/itsm/package.yaml`).
 pub fn reports() -> Vec<Arc<dyn ReportSource>> {
-    vec![]
+    vec![Arc::new(reports::ItsmReports)]
 }
 
 /// Upkeep: the working calendar the targets count on made when absent; items their discovery source no

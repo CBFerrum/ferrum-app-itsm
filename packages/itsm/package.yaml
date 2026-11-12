@@ -9,7 +9,7 @@ modules:
     label: IT Services
     icon: headset
     order: 57
-    items: [Incident, CatalogRequest, Problem, ItChange, ConfigurationItem, ServiceOffering, ChangeFreeze, ItGroup, ItCategory, PriorityMatrix, ItNote, ItsmSettings]
+    items: [Incident, CatalogRequest, Problem, ItChange, ConfigurationItem, ServiceOffering, ChangeFreeze, ItGroup, ItCategory, PriorityMatrix, ItNote, ItsmSettings, report:itsm_open_incidents, report:itsm_target_compliance, report:itsm_time_to_resolve, report:itsm_requests_by_item, report:itsm_change_success]
 
 roles:
   - name: Service Desk

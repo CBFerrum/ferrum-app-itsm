@@ -441,4 +441,55 @@ async fn scenario() {
     );
 
     assert_eq!(told("Incident INC").await, 2, "the assignee is told, and the caller that it is resolved");
+
+    // ───────────── 7. reports ─────────────
+    for source in ferrum_app_itsm::reports() {
+        ferrum_domain::reports::add_source(source);
+    }
+    let report = |name: &'static str, ctx: Ctx, extra: &[(&str, &str)]| {
+        let kk = k.clone();
+        let params: std::collections::HashMap<String, String> = extra.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
+        async move { ferrum_domain::reports::run(&kk, &ctx, name, &params).await.unwrap_or_else(|e| panic!("{name}: {e:?}")) }
+    };
+    let cell = |r: &Value, group: &str, field: &str| {
+        r["rows"].as_array().unwrap().iter().find(|x| x["group"] == group).map(|x| x[field].clone()).unwrap_or(Value::Null)
+    };
+    let open = report("itsm_open_incidents", desk.clone(), &[]).await;
+    let open_now =
+        t.k.list(&t.admin, "Incident", &Default::default())
+            .await
+            .unwrap()
+            .rows
+            .iter()
+            .filter(|r| ["New", "In Progress", "On Hold", "Awaiting Caller"].contains(&r["status"].as_str().unwrap()))
+            .count();
+    assert_eq!(open["totals"]["incidents"], json!(open_now), "every open incident, once");
+    assert!(cell(&open, "P3", "incidents").as_i64().unwrap() >= 1);
+    let by_age = report("itsm_open_incidents", desk.clone(), &[("group_by", "Age")]).await;
+    assert_eq!(cell(&by_age, "under a day", "incidents"), json!(open_now), "all opened today");
+    let comp = report("itsm_target_compliance", desk.clone(), &[]).await;
+    assert!(cell(&comp, "P1", "resolution_breached").as_i64().unwrap() >= 1, "the P1 resolved late is a miss: {comp}");
+    assert!(!cell(&comp, "P1", "resolution_pct").is_null());
+    let mttr = report("itsm_time_to_resolve", desk.clone(), &[("group_by", "Month")]).await;
+    assert!(mttr["rows"][0]["resolved"].as_i64().unwrap() >= 1 && !mttr["rows"][0]["mean"].is_null(), "{mttr}");
+    let asked = report("itsm_requests_by_item", desk.clone(), &[]).await;
+    assert_eq!(cell(&asked, "VPN access", "requests"), json!(2), "Ann's and the desk's");
+    assert_eq!(cell(&asked, "New laptop", "requests"), json!(1));
+    let ci = uid(&t.insert(&cfg, "ConfigurationItem", json!({"ci_name": "Edge router", "ci_type": "Network Device"})).await["id"]);
+    let ci2 = uid(&t.insert(&cfg, "ConfigurationItem", json!({"ci_name": "Core switch", "ci_type": "Network Device"})).await["id"]);
+    for (item, day, ends) in [(ci, "2026-11-02", true), (ci2, "2026-11-03", false)] {
+        let c = uid(&t.insert(&desk, "ItChange", json!({"title": "Firmware", "ci": item.to_string(), "kind": "Standard", "planned_start": format!("{day}T02:00:00Z"), "planned_end": format!("{day}T03:00:00Z")})).await["id"]);
+        t.act(&desk, "ItChange", c, "submit_change", Value::Null).await.unwrap();
+        t.act(&desk, "ItChange", c, "implement", Value::Null).await.unwrap();
+        if ends {
+            t.act(&desk, "ItChange", c, "close_change", Value::Null).await.unwrap();
+        } else {
+            t.act(&desk, "ItChange", c, "fail_change", json!({"note": "Backed out"})).await.unwrap();
+        }
+    }
+    let changes = report("itsm_change_success", desk.clone(), &[]).await;
+    assert_eq!((cell(&changes, "Standard", "successful"), cell(&changes, "Standard", "failed")), (json!(1), json!(1)));
+    // Reports carry the caller's row scope: Ann counts her own incidents only.
+    let hers = report("itsm_open_incidents", ann.clone(), &[]).await;
+    assert_eq!(hers["totals"]["incidents"], json!(2), "her two open incidents, nobody else's");
 }
