@@ -134,7 +134,8 @@
     - {name: status, type: select, options: [New, In Progress, On Hold, Awaiting Caller, Resolved, Closed], default: New, in_list: true, in_filter: true, description: "Awaiting Caller stops the response and resolution clocks"}
     - {name: assignment_group, type: link, to: ItGroup, in_list: true, in_filter: true}
     - {name: assigned_to, type: email, in_list: true, in_filter: true, label: Assignee, description: "One of the assignment group's members"}
-    - {name: problem, type: link, to: Problem}
+    - {name: problem, type: link, to: Problem, in_filter: true}
+    - {name: change, type: link, to: ItChange, in_filter: true, label: Caused By Change, description: "The change whose review opened this incident, or that is known to have caused it"}
     - {name: opened_at, type: datetime, read_only: true, no_copy: true}
     - {name: respond_by, type: datetime, no_copy: true, label: Respond By}
     - {name: respond_state, type: select, options: [running, paused, met, met_late, breached], no_copy: true, in_filter: true, label: Response Target}
@@ -180,26 +181,136 @@
   numbering: {template: "PRB-{YYYY}-{seq:5}"}
   list: {columns: [number, title, ci, status], sort: created_at desc}
 
+- name: ChangeType
+  label: Change Type
+  label_plural: Change Types
+  kind: master
+  module: itsm
+  title_field: type_name
+  description: "A kind of change and the path it takes. Pre-approved: from an approved template it needs no approval. Board: the members of its board decide, N of M. Emergency: a smaller group decides and the change is reviewed afterwards. A workspace adds its own types."
+  fields:
+    - {name: type_name, type: data, required: true, unique: true, in_list: true, label: Name}
+    - {name: path, type: select, options: [Pre-approved, Board, Emergency], default: Board, required: true, in_list: true, in_filter: true, description: "How a change of this type is approved"}
+    - {name: board, type: link, to: ItGroup, in_list: true, label: Approving Group, description: "The group whose members decide (a Pre-approved type names it for a change that is not from an approved template). It is an assignment group: its members are the approvers"}
+    - {name: quorum, type: int, default: 1, min: 1, max: 5, in_list: true, label: Approvals Needed, description: "How many members of the group must approve (N of M), at most 5"}
+    - {name: high_risk_group, type: link, to: ItGroup, label: Group for High Risk, description: "When the questionnaire or the person says High risk, one member of this group approves as well"}
+    - {name: review_after, type: check, in_list: true, label: Review Afterwards, description: "After it is implemented the change is reviewed before it can be closed (an emergency change usually is)"}
+    - {name: description, type: text}
+    - {name: active, type: check, default: true, in_list: true, in_filter: true}
+  list: {columns: [type_name, path, board, quorum, review_after, active], sort: type_name asc}
+
+- name: RiskChoice
+  label: Choice
+  kind: child
+  fields:
+    - {name: choice_label, type: data, required: true, in_list: true, label: Answer}
+    - {name: score, type: int, default: 0, min: 0, max: 100, in_list: true}
+
+- name: RiskQuestion
+  label: Risk Question
+  label_plural: Risk Questionnaire
+  kind: master
+  module: itsm
+  title_field: question_text
+  description: "A question asked of every change. Each answer scores; the scores of the questions that measure risk add up to the change's risk, those that measure impact to its impact, against the thresholds in the IT Services settings."
+  fields:
+    - {name: question_text, type: data, required: true, unique: true, in_list: true, label: Question}
+    - {name: measures, type: select, options: [Risk, Impact], default: Risk, required: true, in_list: true, in_filter: true}
+    - {name: position, type: int, default: 10, in_list: true, description: "Questions are asked in this order"}
+    - {name: choices, type: table, of: RiskChoice}
+    - {name: active, type: check, default: true, in_list: true, in_filter: true}
+  list: {columns: [question_text, measures, position, active], sort: position asc}
+
+- name: ChangeAnswer
+  label: Answer
+  kind: child
+  fields:
+    - {name: question, type: data, required: true, in_list: true}
+    - {name: answer, type: data, required: true, in_list: true}
+    - {name: score, type: int, read_only: true, in_list: true}
+
+- name: ChangeItem
+  label: Affected Item
+  kind: child
+  fields:
+    - {name: item, type: link, to: ConfigurationItem, required: true, in_list: true, description: "A configuration item or a business service the change touches"}
+
+- name: ChangeTemplate
+  label: Change Template
+  label_plural: Change Templates
+  kind: master
+  module: itsm
+  title_field: template_name
+  description: A change done the same way each time, with its plan, back-out plan and test plan. Once a Change Manager approves it, a change raised from it on a Pre-approved type needs no further approval.
+  fields:
+    - {name: template_name, type: data, required: true, unique: true, in_list: true, label: Name}
+    - {name: change_type, type: link, to: ChangeType, required: true, in_list: true}
+    - {name: ci, type: link, to: ConfigurationItem, in_list: true, label: Item Changed}
+    - {name: risk, type: select, options: [Low, Medium, High], default: Low}
+    - {name: change_plan, type: text, label: Plan}
+    - {name: backout_plan, type: text}
+    - {name: test_plan, type: text}
+    - {name: approved, type: check, read_only: true, no_copy: true, in_list: true, in_filter: true}
+    - {name: approved_by, type: email, read_only: true, no_copy: true}
+    - {name: active, type: check, default: true, in_list: true}
+  actions:
+    - {name: approve_template, label: Approve Template, permission: write, roles: [Change Manager], condition: "!doc.approved", effects: [{type: set_fields, values: {approved: "true", approved_by: "user.email"}}]}
+    - {name: withdraw_template, label: Withdraw Approval, permission: write, roles: [Change Manager], condition: "doc.approved", effects: [{type: set_fields, values: {approved: "false"}}]}
+    - name: raise_change
+      label: Raise a Change
+      permission: read
+      condition: "doc.active && doc.approved"
+      params:
+        - {name: title, type: data, label: Title, required: true}
+        - {name: planned_start, type: datetime, label: Starts, required: true}
+        - {name: planned_end, type: datetime, label: Ends, required: true}
+      effects:
+        - type: create_document
+          entity: ItChange
+          values: {title: params.title, ci: doc.ci, change_type: doc.change_type, template: doc.id, risk: doc.risk, change_plan: doc.change_plan, backout_plan: doc.backout_plan, test_plan: doc.test_plan, planned_start: params.planned_start, planned_end: params.planned_end}
+  list: {columns: [template_name, change_type, ci, risk, approved, active], sort: template_name asc}
+
 - name: ItChange
   label: Change
   label_plural: Changes
   kind: master
   module: itsm
   title_field: title
-  description: A change to something IT runs. Normal changes are approved by a change manager who did not raise them, and are kept out of freezes; no two approved changes touch one item at once.
+  description: A change to something IT runs, of a type that sets its path to approval. With the change board on, a normal change is approved by N of the members of a group, an emergency one by a smaller group and reviewed afterwards, and one raised from an approved template by no one; no two approved changes touch one item at once.
   fields:
     - {name: title, type: data, required: true, in_list: true}
+    - {name: change_type, type: link, to: ChangeType, in_list: true, in_filter: true, label: Type, description: "Left empty, the type named like the class below, or the first of that path"}
     - {name: ci, type: link, to: ConfigurationItem, required: true, in_list: true, in_filter: true, label: Item Changed}
-    - {name: kind, type: select, options: [Standard, Normal, Emergency], default: Normal, required: true, in_list: true, in_filter: true}
+    - {name: affected, type: table, of: ChangeItem, label: Also Affects, description: "Other services and configuration items the change touches"}
+    - {name: kind, type: select, options: [Standard, Normal, Emergency], default: Normal, required: true, in_list: true, in_filter: true, label: Class, description: "Follows the type's path: Pre-approved is Standard, Board is Normal, Emergency is Emergency. A change made without a type names one of these and takes the type of that name"}
+    - {name: template, type: link, to: ChangeTemplate, label: Raised From Template}
+    - {name: risk_answers, type: table, of: ChangeAnswer, label: Risk Questionnaire, description: "The answer to each question of the risk questionnaire; with any answered, risk and impact are worked out from them"}
     - {name: risk, type: select, options: [Low, Medium, High], default: Medium, in_list: true}
+    - {name: risk_score, type: int, read_only: true, no_copy: true}
+    - {name: impact_score, type: int, read_only: true, no_copy: true}
+    - {name: impact_level, type: select, options: [Low, Medium, High], read_only: true, no_copy: true, label: Impact}
     - {name: planned_start, type: datetime, required: true, in_list: true}
     - {name: planned_end, type: datetime, required: true}
+    - {name: change_plan, type: text, label: Plan}
     - {name: backout_plan, type: text}
+    - {name: test_plan, type: text}
     - {name: impacted, type: text, read_only: true, description: "The items that depend on or run on it, however far round"}
+    - {name: window_flags, type: text, read_only: true, no_copy: true, description: "Other scheduled changes on the same service or item in the same window, and any freeze it falls in"}
+    - {name: path, type: select, options: [Pre-approved, Board, Emergency], read_only: true, no_copy: true, in_filter: true}
+    - {name: route, type: select, options: [Pre-approved, Board, Emergency, Manager], read_only: true, no_copy: true, in_filter: true, description: "Who approves it: nobody (Pre-approved), the board, the emergency group, or one Change Manager (the settings say Single Manager)"}
+    - {name: quorum, type: int, read_only: true, no_copy: true}
+    - {name: board_members, type: json, read_only: true, no_copy: true, hidden: true}
+    - {name: escalation_members, type: json, read_only: true, no_copy: true, hidden: true}
+    - {name: second_look, type: check, read_only: true, no_copy: true, description: "High risk: one member of the type's high-risk group approves too"}
+    - {name: review_required, type: check, read_only: true, no_copy: true, in_filter: true}
     - {name: status, type: select, options: [Draft, Submitted, Approved, Implemented, Closed, Rejected, Failed], default: Draft, read_only: true, no_copy: true, in_list: true, in_filter: true}
     - {name: decided_by, type: email, read_only: true, no_copy: true}
     - {name: decision_note, type: text, read_only: true, no_copy: true}
     - {name: implemented_at, type: datetime, read_only: true, no_copy: true}
+    - {name: review_outcome, type: select, options: [Successful, Successful with Issues, Failed], read_only: true, no_copy: true, in_filter: true}
+    - {name: review_notes, type: text, read_only: true, no_copy: true}
+    - {name: reviewed_at, type: datetime, read_only: true, no_copy: true}
+    - {name: reviewed_by, type: email, read_only: true, no_copy: true}
   actions:
     - {name: submit_change, label: Submit It, permission: write, condition: "doc.status == 'Draft'"}
     - {name: approve_change, label: Approve It, permission: write, condition: "doc.status == 'Submitted'"}
@@ -207,8 +318,16 @@
     - {name: implement, label: Done, permission: write, condition: "doc.status == 'Approved'"}
     - {name: close_change, label: Close It, permission: write, condition: "doc.status == 'Implemented'", params: [{name: note, type: text, label: Review}]}
     - {name: fail_change, label: It Failed, permission: write, condition: "doc.status == 'Implemented'", params: [{name: note, type: text, label: What happened, required: true}]}
+    - name: review_change
+      label: Review It
+      permission: write
+      condition: "doc.status == 'Implemented'"
+      params:
+        - {name: outcome, type: select, options: [Successful, Successful with Issues, Failed], label: Outcome, required: true}
+        - {name: note, type: text, label: What we learned}
+        - {name: open_incident, type: check, label: Open an incident for it}
   numbering: {template: "CHG-{YYYY}-{seq:5}"}
-  list: {columns: [number, title, ci, kind, planned_start, status], sort: planned_start desc}
+  list: {columns: [number, title, ci, change_type, risk, planned_start, status], sort: planned_start desc}
 
 - name: ChangeFreeze
   label: Change Freeze
