@@ -1,0 +1,80 @@
+- name: ItsmSettings
+  label: IT Services Settings
+  kind: settings
+  module: itsm
+  fields:
+    - {name: note_edit_minutes, type: int, label: Minutes a Note May Be Corrected, default: 5, min: 0, max: 1440, description: "Its author may correct a work note or comment for this long after posting it; then it is final. 0 = never"}
+    - {name: reopen_days, type: int, label: Days a Resolved Incident May Be Reopened, default: 5, min: 0, max: 365, description: "A caller who finds a resolved incident is not resolved may reopen it for this many days"}
+    - {name: defaults_made, type: check, read_only: true, hidden: true, no_copy: true, description: "The notifications IT Services starts with are made once; after that they are the workspace's"}
+
+- name: ItGroupMember
+  label: Group Member
+  kind: child
+  fields:
+    - {name: member, type: email, required: true, in_list: true}
+
+- name: ItGroup
+  label: Assignment Group
+  label_plural: Assignment Groups
+  kind: master
+  module: itsm
+  title_field: group_name
+  description: A team that works incidents and requests, with its lead. An assignee is one of its members.
+  fields:
+    - {name: group_name, type: data, required: true, unique: true, in_list: true, label: Name}
+    - {name: lead, type: email, in_list: true}
+    - {name: active, type: check, default: true, in_list: true, in_filter: true}
+    - {name: members, type: table, of: ItGroupMember}
+  list: {columns: [group_name, lead, active], sort: group_name asc}
+
+- name: ItCategory
+  label: Category
+  label_plural: Categories
+  kind: master
+  module: itsm
+  title_field: category_name
+  description: A kind of incident or request. One with a parent is a subcategory of it.
+  fields:
+    - {name: category_name, type: data, required: true, unique: true, in_list: true, label: Name}
+    - {name: parent, type: link, to: ItCategory, in_list: true, in_filter: true}
+    - {name: active, type: check, default: true, in_list: true, in_filter: true}
+  list: {columns: [category_name, parent, active], sort: category_name asc}
+
+- name: PriorityMatrix
+  label: Priority Matrix Row
+  label_plural: Priority Matrix
+  kind: master
+  module: itsm
+  title_field: matrix_name
+  description: "The priority an impact and an urgency give, and the response and resolution times of that priority, as ISO 8601 durations (PT30M, PT4H, P2D) counted as working time on the calendar itsm_hours (Admin, Calendars): PT24H is 24 working hours."
+  fields:
+    - {name: matrix_name, type: data, computed: "doc.impact + ' / ' + doc.urgency", in_list: true, label: Name}
+    - {name: impact, type: select, options: [High, Medium, Low], required: true, in_list: true}
+    - {name: urgency, type: select, options: [High, Medium, Low], required: true, in_list: true}
+    - {name: priority, type: select, options: [P1, P2, P3, P4], required: true, in_list: true}
+    - {name: response_time, type: data, required: true, in_list: true, default: PT4H}
+    - {name: resolution_time, type: data, required: true, in_list: true, default: PT24H}
+  unique: [[impact, urgency]]
+  rules:
+    - {name: response_duration, check: "doc.response_time.matches('^P([0-9]+D)?(T([0-9]+H)?([0-9]+M)?)?$') && size(doc.response_time) > 2", field: response_time, message: "is an ISO 8601 duration, such as PT30M, PT4H or P2D"}
+    - {name: resolution_duration, check: "doc.resolution_time.matches('^P([0-9]+D)?(T([0-9]+H)?([0-9]+M)?)?$') && size(doc.resolution_time) > 2", field: resolution_time, message: "is an ISO 8601 duration, such as PT30M, PT4H or P2D"}
+  list: {columns: [impact, urgency, priority, response_time, resolution_time], sort: priority asc}
+
+- name: ItNote
+  label: Note
+  label_plural: Notes
+  kind: master
+  module: itsm
+  title_field: body
+  description: "An entry on an incident, request, problem or change: a work note for staff only, or a comment its caller sees. Kept in order with its author and time, corrected only by its author soon after, and never deleted by anyone but an administrator."
+  fields:
+    - {name: incident, type: link, to: Incident, in_list: true, in_filter: true}
+    - {name: request, type: link, to: CatalogRequest, in_list: true, in_filter: true}
+    - {name: problem, type: link, to: Problem, in_filter: true}
+    - {name: change, type: link, to: ItChange, in_filter: true}
+    - {name: visibility, type: select, options: [Internal, Visible to Caller], default: Internal, required: true, in_list: true, in_filter: true, description: "Internal: staff only. Visible to Caller: the caller sees it on an incident or request"}
+    - {name: body, type: text, required: true, in_list: true, label: Note}
+    - {name: author, type: email, read_only: true, no_copy: true, in_list: true}
+    - {name: posted_at, type: datetime, read_only: true, no_copy: true, in_list: true}
+    - {name: caller_email, type: email, read_only: true, no_copy: true, description: "The caller of its incident or request, copied so the caller is told"}
+  list: {columns: [body, visibility, author, posted_at, incident, request], sort: created_at asc}
