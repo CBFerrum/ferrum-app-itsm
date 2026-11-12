@@ -119,6 +119,17 @@ pub(crate) async fn ensure_board(k: &Kernel, ctx: &Ctx, upgraded: bool) -> Resul
     .bind(ctx.tenant)
     .execute(&mut *tx)
     .await?;
+    // Items and relations written before classes and relation types take the one named like their type or kind.
+    sqlx::query("update e_configuration_item i set ci_class = c.id from e_ci_class c where c.tenant_id = i.tenant_id and c.class_name = i.ci_type and i.ci_class is null and i.tenant_id = $1")
+        .bind(ctx.tenant)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "update e_configuration_item__relations r set relation_type = t.id from e_relation_type t where t.tenant_id = r.tenant_id and t.relation_name = r.kind and r.relation_type is null and r.tenant_id = $1",
+    )
+    .bind(ctx.tenant)
+    .execute(&mut *tx)
+    .await?;
     let mut set = json!({"board_defaults_made": true});
     if !upgraded {
         for (field, value) in [("change_approval", "Change Board"), ("problem_closes_incidents", "Offer")] {

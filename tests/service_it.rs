@@ -260,4 +260,86 @@ async fn scenario() {
         .unwrap()
         .rows;
     assert!(ts.len() == 2 && ts.iter().all(|x| x["status"] == "Open"), "all open at once: {ts:?}");
+
+    // ───────────── 4. classes with attributes, relation types, the impact route ─────────────
+    let router = uid(&t
+        .insert(
+            &cfg,
+            "CiClass",
+            json!({"class_name": "Router", "attributes": [
+        {"attr_name": "firmware", "attr_type": "Text", "required": true}, {"attr_name": "ports", "attr_type": "Number"},
+        {"attr_name": "managed", "attr_type": "Yes/No"}, {"attr_name": "tier", "attr_type": "Choice", "choices": "gold, silver"}]}),
+        )
+        .await["id"]);
+    let r1 = t
+        .insert(
+            &cfg,
+            "ConfigurationItem",
+            json!({"ci_name": "Edge 1", "ci_class": router.to_string(), "attributes": {"firmware": "4.2", "ports": 24, "managed": "Yes", "tier": "gold"}}),
+        )
+        .await;
+    assert_eq!(r1["ci_type"], "Other", "a class that is not one of the coarse types is Other");
+    let bad = |a: Value| t.k.insert(&cfg, "ConfigurationItem", obj(json!({"ci_name": "Edge x", "ci_class": router.to_string(), "attributes": a})));
+    refused(bad(json!({"ports": 1})).await, "invalid", "firmware needs a value");
+    refused(bad(json!({"firmware": "1", "colour": "red"})).await, "invalid", "colour is not an attribute");
+    refused(bad(json!({"firmware": "1", "ports": "many"})).await, "invalid", "ports is a number");
+    refused(bad(json!({"firmware": "1", "tier": "bronze"})).await, "invalid", "tier is one of");
+    let laptop = t.insert(&cfg, "ConfigurationItem", json!({"ci_name": "Ann's laptop", "ci_type": "Laptop"})).await;
+    assert_eq!(laptop["ci_class"], t.named("CiClass", "class_name", "Laptop").await.to_string(), "an item with only a type has the class of that name");
+    // What flows where: a part of a service reaches the service when it fails; what depends on another is reached by it.
+    let item = |n: &str| json!({"ci_name": n, "ci_type": "Server"});
+    let part_of = t.named("RelationType", "relation_name", "Part Of").await;
+    let svc2 = uid(&t.insert(&cfg, "ConfigurationItem", json!({"ci_name": "Portal", "ci_type": "Business Service"})).await["id"]);
+    let node = uid(&t
+        .insert(
+            &cfg,
+            "ConfigurationItem",
+            json!({"ci_name": "Node A", "ci_type": "Server", "relations": [{"relation_type": part_of.to_string(), "target": svc2.to_string()}]}),
+        )
+        .await["id"]);
+    let chg = |ci: Uuid| json!({"title": "Reboot", "ci": ci.to_string(), "kind": "Emergency", "planned_start": "2027-03-01T10:00:00Z", "planned_end": "2027-03-01T11:00:00Z", "backout_plan": "x"});
+    let c = t.insert(&desk, "ItChange", chg(node)).await;
+    assert_eq!(c["impacted"], "Portal", "a failure of a part reaches what it is part of: {c:?}");
+    // Not the other way: the service's own change reaches nothing.
+    assert!(t.insert(&desk, "ItChange", chg(svc2)).await["impacted"].is_null());
+    // A loop through a relation type of the workspace's own is refused: Node A part of Portal, so Portal depends on nothing of it.
+    let dep = t.named("RelationType", "relation_name", "Depends On").await;
+    refused(t.set(&cfg, "ConfigurationItem", node, json!({"relations": [{"relation_type": part_of.to_string(), "target": svc2.to_string()}, {"relation_type": dep.to_string(), "target": svc2.to_string()}]})).await, "invalid", "come back round");
+    // A chain of dependencies, followed to the depth the settings give and never twice.
+    let mut chain = vec![uid(&t.insert(&cfg, "ConfigurationItem", item("L0")).await["id"])];
+    for i in 1..=4 {
+        let below = chain[i - 1];
+        chain.push(uid(&t
+            .insert(
+                &cfg,
+                "ConfigurationItem",
+                json!({"ci_name": format!("L{i}"), "ci_type": "Server", "relations": [{"kind": "Depends On", "target": below.to_string()}]}),
+            )
+            .await["id"]));
+    }
+    refused(
+        t.set(&cfg, "ConfigurationItem", chain[0], json!({"relations": [{"kind": "Runs On", "target": chain[4].to_string()}]})).await,
+        "invalid",
+        "come back round",
+    );
+    let all = t.insert(&desk, "ItChange", chg(chain[0])).await;
+    assert_eq!(all["impacted"], "L1, L2, L3, L4");
+    t.set(&t.admin, "ItsmSettings", t.settings().await, json!({"impact_depth": 2})).await.unwrap();
+    let cut = t.insert(&desk, "ItChange", chg(chain[0])).await;
+    assert_eq!(cut["impacted"], "L1, L2", "to a bound depth");
+    // Relations written before types, with only a kind, take the type of that name.
+    let rel = t.get("ConfigurationItem", chain[1]).await;
+    assert_eq!(rel["relations"][0]["relation_type"], dep.to_string());
+    // Items come in through the platform's import, and a described pull from an outside inventory is offered, off, taking up cleanly.
+    let (made, refused_rows) = t
+        .k
+        .import_rows(&cfg, "ConfigurationItem", &[json!({"ci_name": "Imported 1", "ci_type": "Server"}), json!({"ci_name": "Imported 2", "ci_type": "Laptop"})])
+        .await
+        .unwrap();
+    assert!(made.len() == 2 && refused_rows.is_empty(), "{made:?} {refused_rows:?}");
+    let pkg = ferrum_app_itsm::packages().unwrap().into_iter().find(|p| p.name() == "itsm").unwrap();
+    let offered = pkg.manifest.connections.first().cloned().expect("the package describes a connection");
+    let input: ferrum_kernel::connections::ConnectionInput = serde_json::from_value(offered).expect("a connection the platform takes");
+    assert!(!input.enabled, "it is shipped off");
+    t.k.save_connection_def(&t.admin, None, &input).await.expect("the description is one the platform accepts");
 }
