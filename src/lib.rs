@@ -93,6 +93,7 @@ pub async fn maintenance_at(k: &Kernel, now: DateTime<Utc>) -> Result<()> {
             }
             let connected = schema.packages.iter().any(|p| p == CONNECTOR_PACKAGE);
             let ctx = Ctx::system(tenant, schema);
+            defaults::ensure_automations(k, &ctx).await?;
             let mut tx = k.db.tenant_tx(tenant).await?;
             defaults::ensure_calendar(&mut tx, tenant).await?;
             discovery::mark_missing(k, &ctx, &mut tx, now).await?;

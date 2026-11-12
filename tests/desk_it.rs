@@ -384,4 +384,61 @@ async fn scenario() {
         sqlx::query_as("select body, visibility from e_it_note where request = $1").bind(uid(&ok["id"])).fetch_one(&mut *tx).await.unwrap();
     tx.rollback().await.unwrap();
     assert_eq!((kept.0.as_str(), kept.1.as_str()), ("A lighter one", "Internal"));
+
+    // ───────────── 8. notifications ─────────────
+    t.user("net@acme.test", &["Service Desk"]).await;
+    ferrum_app_itsm::maintenance(&k).await.expect("upkeep makes the notifications the workspace starts with");
+    ferrum_app_itsm::maintenance(&k).await.expect("and only once");
+    let count = |sql: &'static str| {
+        let kk = k.clone();
+        async move {
+            let mut tx = kk.db.tenant_tx(tenant).await.unwrap();
+            let n: i64 = sqlx::query_scalar(sql).bind(tenant).fetch_one(&mut *tx).await.unwrap();
+            tx.commit().await.unwrap();
+            n
+        }
+    };
+    assert_eq!(count("select count(*) from automation where tenant_id = $1 and name like 'IT Services:%'").await, 7);
+    t.k.dispatch_outbox_once().await.ok();
+    let inc = t
+        .insert(
+            &desk,
+            "Incident",
+            json!({"title": "Mouse is dead", "caller_email": "ann@acme.test", "assigned_to": "net@acme.test", "assignment_group": group.to_string()}),
+        )
+        .await;
+    let inc_id = uid(&inc["id"]);
+    while k.dispatch_outbox_once().await.unwrap_or(0) > 0 {}
+    let told = |kind: &'static str| {
+        let kk = k.clone();
+        async move {
+            let mut tx = kk.db.tenant_tx(tenant).await.unwrap();
+            let n: i64 = sqlx::query_scalar("select count(*) from notification where tenant_id = $1 and record_id = $2 and title like $3")
+                .bind(tenant)
+                .bind(inc_id)
+                .bind(format!("{kind}%"))
+                .fetch_one(&mut *tx)
+                .await
+                .unwrap();
+            tx.commit().await.unwrap();
+            n
+        }
+    };
+    assert_eq!(told("We received your incident").await, 1, "the caller is told it was received");
+    assert_eq!(
+        count("select count(*) from outbox where tenant_id = $1 and topic = 'ferrum.mail' and payload->>'subject' like '%received: Mouse is dead'").await,
+        1,
+        "and by mail"
+    );
+    t.insert(&desk, "ItNote", json!({"incident": inc_id.to_string(), "visibility": "Visible to Caller", "body": "Try another port"})).await;
+    t.insert(&desk, "ItNote", json!({"incident": inc_id.to_string(), "body": "Probably the cable"})).await;
+    t.set(&desk, "Incident", inc_id, json!({"status": "Resolved", "resolution": "New mouse"})).await.unwrap();
+    while k.dispatch_outbox_once().await.unwrap_or(0) > 0 {}
+    assert_eq!(
+        count("select count(*) from notification where tenant_id = $1 and title like 'New comment from IT: Try another port'").await,
+        1,
+        "a visible comment, not a work note"
+    );
+
+    assert_eq!(told("Incident INC").await, 2, "the assignee is told, and the caller that it is resolved");
 }
