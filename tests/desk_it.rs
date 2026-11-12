@@ -40,12 +40,19 @@ impl T {
         let s = self.k.login("itdesk", email, "Correct-Horse-9").await.expect("login");
         self.k.load_ctx(self.tenant, id, Some(s.token_version), "it".into()).await.expect("ctx")
     }
+    /// A portal person holding `roles`: an employee, or someone outside, who signs in by a mailed code.
+    async fn portal(&self, email: &str, roles: &[&str]) -> Ctx {
+        let roles: Vec<String> = roles.iter().map(|r| r.to_string()).collect();
+        let id = self.k.create_user(&self.admin, email, email, None, &roles, false).await.expect("user");
+        self.k.set_user_kind(&self.admin, id, "portal").await.expect("a portal person");
+        let version = self.k.token_version(self.tenant, id).await.expect("token version");
+        self.k.load_ctx(self.tenant, id, Some(version), "it".into()).await.expect("ctx")
+    }
     /// The id of the record whose `field` holds `value`.
     async fn named(&self, entity: &str, field: &str, value: &str) -> Uuid {
         let q = ListQuery { filters: ferrum_kernel::query::parse_filters(&json!({field: value})).unwrap(), ..Default::default() };
         uid(&self.k.list(&self.admin, entity, &q).await.unwrap().rows[0]["id"])
     }
-    #[allow(dead_code)]
     async fn act(&self, ctx: &Ctx, entity: &str, id: Uuid, action: &str, params: Value) -> Result<Value, Error> {
         self.k.run_action(ctx, entity, id, action, params).await
     }
@@ -138,7 +145,7 @@ async fn scenario() {
     // ───────────── 2. work notes and comments ─────────────
     let other = t.insert(&desk, "Incident", json!({"title": "Printer jam", "caller_email": "eve@acme.test"})).await;
     let other_id = uid(&other["id"]);
-    let ann = t.user("ann@acme.test", &["IT Self Service"]).await;
+    let ann = t.portal("ann@acme.test", &["IT Self Service"]).await;
     let on_mine = t.insert(&desk, "Incident", json!({"title": "Laptop will not boot", "caller_email": "ann@acme.test"})).await;
     let mine_id = uid(&on_mine["id"]);
     let note = |on: Uuid, kind: &str, body: &str| json!({"incident": on.to_string(), "visibility": kind, "body": body});
@@ -255,4 +262,55 @@ async fn scenario() {
     .unwrap();
     tx.rollback().await.unwrap();
     assert_eq!((kept.0.as_str(), kept.1.is_some(), kept.2), ("breached", true, 4 * 3600), "an open, late P1 stays breached on its own four hours");
+
+    // ───────────── 4. employee self-service ─────────────
+    // She reports an incident (herself the caller), and cannot report one for someone else nor work it.
+    let mine = t.insert(&ann, "Incident", json!({"title": "Cannot print", "impact": "Low", "urgency": "Medium"})).await;
+    let mine_id = uid(&mine["id"]);
+    assert_eq!((mine["caller_email"].as_str(), mine["priority"].as_str()), (Some("ann@acme.test"), Some("P4")));
+    refused(t.k.insert(&ann, "Incident", obj(json!({"title": "For Eve", "caller_email": "eve@acme.test"}))).await, "forbidden", "");
+    refused(t.set(&ann, "Incident", mine_id, json!({"status": "Closed"})).await, "forbidden", "");
+    refused(t.k.get(&ann, "Incident", other_id, false).await, "not found", "");
+    refused(t.k.insert(&ann, "ItGroup", obj(json!({"group_name": "Mine"}))).await, "forbidden", "");
+    // She asks for something from the catalog, and follows it.
+    let offerings = t.k.list(&ann, "ServiceOffering", &Default::default()).await.unwrap().rows;
+    assert!(offerings.iter().any(|o| o["offering_name"] == "VPN access"), "the catalog is hers to read");
+    let wanted = t.insert(&ann, "CatalogRequest", json!({"offering": offer.to_string(), "details": "From home on Mondays"})).await;
+    assert_eq!(wanted["caller_email"], "ann@acme.test");
+    let followed = t.k.list(&ann, "CatalogRequest", &Default::default()).await.unwrap().rows;
+    assert_eq!(followed.len(), 1, "only her own request");
+    // Resolved, she confirms it, or finds it is not.
+    t.set(&desk, "Incident", mine_id, json!({"status": "Resolved", "resolution": "Reconnected the printer"})).await.unwrap();
+    t.act(&ann, "Incident", mine_id, "confirm_resolution", Value::Null).await.expect("the caller confirms");
+    assert_eq!(t.get("Incident", mine_id).await["status"], "Closed");
+    let again = uid(&t.insert(&ann, "Incident", json!({"title": "Still cannot print", "impact": "Low", "urgency": "Medium"})).await["id"]);
+    t.set(&desk, "Incident", again, json!({"status": "Resolved", "resolution": "Rebooted"})).await.unwrap();
+    refused(t.act(&ann, "Incident", other_id, "reject_resolution", json!({"note": "x"})).await, "not found", "");
+    refused(t.act(&ann, "Incident", again, "reject_resolution", Value::Null).await, "invalid", "note");
+    let kk = k.clone();
+    let long_ago = |days: i64| {
+        let kk = kk.clone();
+        async move {
+            let mut tx = kk.db.tenant_tx(tenant).await.unwrap();
+            sqlx::query("select set_config('ferrum.system', 'on', true)").execute(&mut *tx).await.unwrap();
+            sqlx::query("update e_incident set resolved_at = now() - make_interval(days => $2) where id = $1")
+                .bind(again)
+                .bind(days as i32)
+                .execute(&mut *tx)
+                .await
+                .unwrap();
+            tx.commit().await.unwrap();
+        }
+    };
+    long_ago(9).await;
+    refused(t.act(&ann, "Incident", again, "reject_resolution", json!({"note": "It broke again"})).await, "forbidden", "too long ago");
+    long_ago(2).await;
+    t.act(&ann, "Incident", again, "reject_resolution", json!({"note": "It broke again"})).await.expect("within the days it may be reopened");
+    let reopened = t.get("Incident", again).await;
+    assert_eq!((reopened["status"].as_str(), reopened["resolved_at"].is_null()), (Some("In Progress"), true));
+    let thread = t.k.list(&ann, "ItNote", &Default::default()).await.unwrap().rows;
+    assert!(
+        thread.iter().any(|n| n["body"].as_str().is_some_and(|b| b.contains("It broke again")) && n["visibility"] == "Visible to Caller"),
+        "her reason is in the thread"
+    );
 }
