@@ -1,5 +1,5 @@
 package: itsm
-version: 0.1.0
+version: 0.2.0
 label: IT Services
 description: "Configuration items and their dependencies, a service catalog, incidents by priority with their targets, problems, and changes with approval, conflicts, freezes and impact"
 depends: [core]
@@ -9,7 +9,7 @@ modules:
     label: IT Services
     icon: headset
     order: 57
-    items: [Incident, CatalogRequest, Problem, ItChange, ConfigurationItem, ServiceOffering, ChangeFreeze, ItGroup, ItCategory, PriorityMatrix, ItNote, ItsmSettings, report:itsm_open_incidents, report:itsm_target_compliance, report:itsm_time_to_resolve, report:itsm_requests_by_item, report:itsm_change_success]
+    items: [Incident, CatalogRequest, Problem, ItChange, ChangeType, ChangeTemplate, RiskQuestion, ConfigurationItem, CiClass, RelationType, ServiceOffering, KnownError, RequestTask, ChangeFreeze, ItGroup, ItCategory, PriorityMatrix, ItNote, ItsmSettings, report:itsm_open_incidents, report:itsm_target_compliance, report:itsm_time_to_resolve, report:itsm_requests_by_item, report:itsm_change_success, report:itsm_change_calendar]
 
 roles:
   - name: Service Desk
@@ -17,11 +17,18 @@ roles:
     permissions:
       - {entity: Incident, read: true, write: true, create: true, export: true}
       - {entity: CatalogRequest, read: true, write: true, create: true}
+      - {entity: RequestTask, read: true, write: true, create: true}
       - {entity: Problem, read: true, write: true, create: true}
+      - {entity: KnownError, read: true, write: true, create: true}
       - {entity: ItChange, read: true, write: true, create: true}
       - {entity: ConfigurationItem, read: true}
+      - {entity: CiClass, read: true}
+      - {entity: RelationType, read: true}
       - {entity: ServiceOffering, read: true}
       - {entity: ChangeFreeze, read: true}
+      - {entity: ChangeType, read: true}
+      - {entity: ChangeTemplate, read: true}
+      - {entity: RiskQuestion, read: true}
       - {entity: ItNote, read: true, write: true, create: true}
       - {entity: ItGroup, read: true}
       - {entity: ItCategory, read: true}
@@ -32,8 +39,14 @@ roles:
     permissions:
       - {entity: ItChange, read: true, write: true, create: true, export: true}
       - {entity: ChangeFreeze, read: true, write: true, create: true}
+      - {entity: ChangeType, read: true, write: true, create: true}
+      - {entity: ChangeTemplate, read: true, write: true, create: true}
+      - {entity: RiskQuestion, read: true, write: true, create: true}
       - {entity: CatalogRequest, read: true, write: true}
+      - {entity: RequestTask, read: true}
       - {entity: ConfigurationItem, read: true}
+      - {entity: CiClass, read: true}
+      - {entity: RelationType, read: true}
       - {entity: ServiceOffering, read: true}
       - {entity: Incident, read: true}
       - {entity: Problem, read: true}
@@ -46,9 +59,12 @@ roles:
     description: Keeps the configuration items, their relations, and the service catalog.
     permissions:
       - {entity: ConfigurationItem, read: true, write: true, create: true, export: true, import: true}
+      - {entity: CiClass, read: true, write: true, create: true}
+      - {entity: RelationType, read: true, write: true, create: true}
       - {entity: ServiceOffering, read: true, write: true, create: true}
       - {entity: Incident, read: true}
       - {entity: ItChange, read: true}
+      - {entity: ChangeType, read: true}
       - {entity: ItGroup, read: true, write: true, create: true}
       - {entity: ItCategory, read: true, write: true, create: true}
       - {entity: PriorityMatrix, read: true, write: true, create: true}
@@ -63,15 +79,19 @@ roles:
       - {entity: ItNote, read: true, write: true, create: true, via: request.caller_email, where: {visibility: Visible to Caller}}
       - {entity: ServiceOffering, read: true}
       - {entity: ItCategory, read: true}
+      - {entity: KnownError, read: true, where: {published: true}}
   - name: Discovery Agent
     description: "A discovery tool's account: reports what it finds to IT Services' discovery intake, and reads configuration items."
     permissions:
       - {entity: ConfigurationItem, read: true}
+      - {entity: CiClass, read: true}
+      - {entity: RelationType, read: true}
   - name: Requester
     description: Asks for things in the service catalog, and follows them.
     permissions:
       - {entity: ServiceOffering, read: true}
       - {entity: ItCategory, read: true}
+      - {entity: KnownError, read: true, where: {published: true}}
       - {entity: CatalogRequest, read: true, create: true, if_owner: true}
 
 seed:
@@ -102,3 +122,133 @@ seed:
       - {category_name: VPN, parent: "@ItCategory:category_name=Network"}
       - {category_name: Account and Password, parent: "@ItCategory:category_name=Access"}
       - {category_name: Permissions, parent: "@ItCategory:category_name=Access"}
+  - entity: CiClass
+    key: [class_name]
+    records:
+      - {class_name: Business Service}
+      - {class_name: Application}
+      - {class_name: Server}
+      - {class_name: Database}
+      - {class_name: Network Device}
+      - {class_name: Laptop}
+      - {class_name: Other}
+  - entity: RelationType
+    key: [relation_name]
+    records:
+      - {relation_name: Depends On, inverse_name: Is Depended On By, impact_flows: To the Item}
+      - {relation_name: Runs On, inverse_name: Hosts, impact_flows: To the Item}
+      - {relation_name: Part Of, inverse_name: Contains, impact_flows: To the Target}
+      - {relation_name: Connects To, inverse_name: Connects To, impact_flows: None}
+  - entity: ItGroup
+    key: [group_name]
+    records:
+      - {group_name: Change Board}
+      - {group_name: Emergency Change Board}
+  - entity: ChangeType
+    key: [type_name]
+    records:
+      - {type_name: Standard, path: Pre-approved, board: "@ItGroup:group_name=Change Board", quorum: 1, description: "A well-understood change done the same way each time: from an approved template it needs no approval; without one it goes to the board"}
+      - {type_name: Normal, path: Board, board: "@ItGroup:group_name=Change Board", quorum: 2, description: "Planned ahead and decided by the change board"}
+      - {type_name: Emergency, path: Emergency, board: "@ItGroup:group_name=Emergency Change Board", quorum: 1, review_after: true, description: "To restore service or close a risk now: a smaller group decides and the change is reviewed afterwards"}
+  - entity: RiskQuestion
+    key: [question_text]
+    records:
+      - {question_text: Has this change been done before?, measures: Risk, position: 10, choices: [{choice_label: Many times, score: 0}, {choice_label: Once or twice, score: 2}, {choice_label: Never, score: 4}]}
+      - {question_text: Can it be backed out?, measures: Risk, position: 20, choices: [{choice_label: Fully and tested, score: 0}, {choice_label: "Fully, not tested", score: 2}, {choice_label: Not or only partly, score: 4}]}
+      - {question_text: Is it tested outside production?, measures: Risk, position: 30, choices: [{choice_label: Yes, score: 0}, {choice_label: In part, score: 2}, {choice_label: No, score: 4}]}
+      - {question_text: Who is affected if it goes wrong?, measures: Impact, position: 40, choices: [{choice_label: A few people, score: 1}, {choice_label: A team or department, score: 4}, {choice_label: Most of the organisation or customers, score: 8}]}
+      - {question_text: Is a service down while it is done?, measures: Impact, position: 50, choices: [{choice_label: No, score: 0}, {choice_label: Briefly, score: 3}, {choice_label: For the whole window, score: 6}]}
+
+# A normal or emergency change asks the members of the group its type names before it is approved (the change
+# board, N of M), a high-risk one a member of the type's high-risk group as well; a standard change from an
+# approved template asks no one. Which applies is the change's `route`, made when it is saved (changes.rs); with the
+# setting Single Manager every route is Manager and no step applies, so the action runs at once and the app's
+# own rule (a Change Manager other than who raised it) holds, as before release 0.4.
+approvals:
+  - entity: ItChange
+    on: {action: approve_change}
+    policy:
+      lock: true
+      steps:
+        - {label: Change board (1 of its members), approvers: {field: board_members}, need: 1, when: "(doc.route == 'Board' || doc.route == 'Emergency') && doc.quorum == 1", remind_after: PT24H, escalate_after: P2D, escalate_to: {role: Change Manager}}
+        - {label: Change board (2 of its members), approvers: {field: board_members}, need: 2, when: "(doc.route == 'Board' || doc.route == 'Emergency') && doc.quorum == 2", remind_after: PT24H, escalate_after: P2D, escalate_to: {role: Change Manager}}
+        - {label: Change board (3 of its members), approvers: {field: board_members}, need: 3, when: "(doc.route == 'Board' || doc.route == 'Emergency') && doc.quorum == 3", remind_after: PT24H, escalate_after: P2D, escalate_to: {role: Change Manager}}
+        - {label: Change board (4 of its members), approvers: {field: board_members}, need: 4, when: "(doc.route == 'Board' || doc.route == 'Emergency') && doc.quorum == 4", remind_after: PT24H, escalate_after: P2D, escalate_to: {role: Change Manager}}
+        - {label: Change board (5 of its members), approvers: {field: board_members}, need: 5, when: "(doc.route == 'Board' || doc.route == 'Emergency') && doc.quorum == 5", remind_after: PT24H, escalate_after: P2D, escalate_to: {role: Change Manager}}
+        - {label: High-risk review, approvers: {field: escalation_members}, need: 1, when: "doc.second_look", not_earlier_deciders: true, remind_after: PT24H, escalate_after: P2D, escalate_to: {role: Change Manager}}
+  # A catalog item that names an approver group asks N of its members instead of one Change Manager; one that
+  # names none has route Manager, no step applies, and the app's own rule holds. Shipped off in that sense.
+  - entity: CatalogRequest
+    on: {action: approve_request}
+    policy:
+      lock: true
+      steps:
+        - {label: "Approver group (1 of its members)", approvers: {field: approver_members}, need: 1, when: "doc.route == 'Group' && doc.quorum == 1", remind_after: PT24H}
+        - {label: "Approver group (2 of its members)", approvers: {field: approver_members}, need: 2, when: "doc.route == 'Group' && doc.quorum == 2", remind_after: PT24H}
+        - {label: "Approver group (3 of its members)", approvers: {field: approver_members}, need: 3, when: "doc.route == 'Group' && doc.quorum == 3", remind_after: PT24H}
+        - {label: "Approver group (4 of its members)", approvers: {field: approver_members}, need: 4, when: "doc.route == 'Group' && doc.quorum == 4", remind_after: PT24H}
+        - {label: "Approver group (5 of its members)", approvers: {field: approver_members}, need: 5, when: "doc.route == 'Group' && doc.quorum == 5", remind_after: PT24H}
+
+# The communication plan of a major incident: told to the subscribers of the affected service, by e-mail unless the
+# workspace gives the template a text or chat body. A workspace edits the wording under Admin, Messages.
+messages:
+  - key: itsm.major_declared
+    label: Major incident declared
+    entity: Incident
+    category: operational
+    languages:
+      en:
+        email:
+          subject: "Major incident {{ doc.number }}: {{ doc.title }}"
+          body: "<p>We have declared a major incident, <b>{{ doc.number }}</b>: {{ doc.title }}.</p><p>{{ doc.comms_plan }}</p>"
+        text: {text: "Major incident {{ doc.number }}: {{ doc.title }}. {{ doc.comms_plan }}"}
+  - key: itsm.major_update
+    label: Major incident update
+    entity: Incident
+    category: operational
+    values: [update]
+    languages:
+      en:
+        email:
+          subject: "Update on {{ doc.number }}: {{ doc.title }}"
+          body: "<p>{{ values.update }}</p><p>Incident {{ doc.number }}: {{ doc.title }}.</p>"
+        text: {text: "{{ doc.number }}: {{ values.update }}"}
+  - key: itsm.major_resolved
+    label: Major incident resolved
+    entity: Incident
+    category: operational
+    values: [resolution]
+    languages:
+      en:
+        email:
+          subject: "Resolved: {{ doc.number }} {{ doc.title }}"
+          body: "<p>The major incident <b>{{ doc.number }}</b> is resolved.</p><p>{{ values.resolution }}</p>"
+        text: {text: "Resolved: {{ doc.number }} {{ doc.title }}. {{ values.resolution }}"}
+
+# An outside inventory, pulled hourly: described, not connected. A workspace points `base` at its inventory, gives the
+# key, edits the operation and the mapping to what that inventory answers, and turns it on (Admin, Connections). Each
+# item it lists becomes (or updates) the configuration item of that name. No product is named.
+connections:
+  - name: itsm_inventory
+    label: Outside inventory
+    description:
+      base: "https://inventory.example.invalid"
+      auth: {type: bearer, secret: api_key}
+      operations:
+        list_items:
+          method: GET
+          path: /items
+          query: {updated_since: "{{ inputs.since }}"}
+          inputs: [since]
+          error_at: /error
+      pulls:
+        - name: items
+          operation: list_items
+          every_minutes: 60
+          items_at: /items
+          cursor: time
+          cursor_input: since
+          map:
+            entity: ConfigurationItem
+            by: {ci_name: item.name}
+            set: {serial_number: item.serial, location: item.location}

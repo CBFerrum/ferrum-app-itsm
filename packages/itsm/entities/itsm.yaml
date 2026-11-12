@@ -1,9 +1,54 @@
+- name: CiAttribute
+  label: Attribute
+  kind: child
+  fields:
+    - {name: attr_name, type: data, required: true, in_list: true, label: Attribute}
+    - {name: attr_type, type: select, options: [Text, Number, Date, Yes/No, Choice], default: Text, required: true, in_list: true, label: Kind}
+    - {name: required, type: check, in_list: true}
+    - {name: choices, type: data, visible_if: "doc.attr_type == 'Choice'", required_if: "doc.attr_type == 'Choice'", description: "The choices, separated by commas"}
+
+- name: CiClass
+  label: Configuration Item Class
+  label_plural: Item Classes
+  kind: master
+  module: itsm
+  title_field: class_name
+  description: "A kind of configuration item and the attributes it carries (a router's firmware, a laptop's asset tag). An item of the class holds a value for each attribute it declares, kept as the item's `attributes` and checked against this list when it is saved."
+  fields:
+    - {name: class_name, type: data, required: true, unique: true, in_list: true, label: Name}
+    - {name: description, type: text}
+    - {name: attributes, type: table, of: CiAttribute}
+    - {name: active, type: check, default: true, in_list: true, in_filter: true}
+  list: {columns: [class_name, active], sort: class_name asc}
+
+- name: RelationType
+  label: Relation Type
+  label_plural: Relation Types
+  kind: master
+  module: itsm
+  title_field: relation_name
+  description: "How one item relates to another, read from the item that lists it (Orders runs on Server 1). The impact route follows a relation only if its type says where a failure flows: To the Item (what depends on or runs on another is hit when that one fails), To the Target (a part is part of something that fails with it), or None."
+  fields:
+    - {name: relation_name, type: data, required: true, unique: true, in_list: true, label: Name}
+    - {name: inverse_name, type: data, in_list: true, label: Read From the Other End As}
+    - {name: impact_flows, type: select, options: [To the Item, To the Target, None], default: None, required: true, in_list: true, label: A Failure Flows}
+    - {name: active, type: check, default: true, in_list: true}
+  list: {columns: [relation_name, inverse_name, impact_flows, active], sort: relation_name asc}
+
 - name: CiRelation
   label: Relation
   kind: child
   fields:
-    - {name: kind, type: select, options: [Depends On, Runs On, Connects To], default: Depends On, required: true, in_list: true}
+    - {name: relation_type, type: link, to: RelationType, in_list: true, label: Relation, description: "Left empty, the type named like the kind below"}
+    - {name: kind, type: select, options: [Depends On, Runs On, Connects To], default: Depends On, required: true, in_list: true, description: "Kept for what was written before relation types: it follows the type when there is one"}
     - {name: target, type: link, to: ConfigurationItem, required: true, in_list: true}
+
+- name: ItSubscriber
+  label: Subscriber
+  kind: child
+  fields:
+    - {name: subscriber, type: email, required: true, in_list: true, description: "Told when a major incident is declared, updated and resolved on this service"}
+    - {name: note, type: data}
 
 - name: ConfigurationItem
   label: Configuration Item
@@ -14,7 +59,9 @@
   description: Something IT runs, and what it depends on or runs on. Nothing depends on itself, however far round. Discovery tools report what they find; what people keep is theirs.
   fields:
     - {name: ci_name, type: data, required: true, unique: true, in_list: true, label: Name}
-    - {name: ci_type, type: select, options: [Business Service, Application, Server, Database, Network Device, Laptop, Other], default: Application, in_list: true, in_filter: true, label: Type}
+    - {name: ci_class, type: link, to: CiClass, in_list: true, in_filter: true, label: Class, description: "Its class, which says what attributes it carries. Left empty, the class named like its type"}
+    - {name: ci_type, type: select, options: [Business Service, Application, Server, Database, Network Device, Laptop, Other], default: Application, in_filter: true, label: Type, description: "The coarse type, kept in step with a class named like one of these, else Other"}
+    - {name: attributes, type: json, label: Class Attributes, description: "The attributes its class declares, as {name: value}, checked when it is saved"}
     - {name: status, type: select, options: [Planned, Live, Retired], default: Live, in_list: true, in_filter: true}
     - {name: environment, type: select, options: [Production, Staging, Test, Development], default: Production, in_list: true, in_filter: true}
     - {name: criticality, type: select, options: [Low, Medium, High, Critical], default: Medium, in_list: true, in_filter: true}
@@ -22,6 +69,7 @@
     - {name: serial_number, type: data}
     - {name: location, type: data}
     - {name: relations, type: table, of: CiRelation}
+    - {name: subscribers, type: table, of: ItSubscriber, description: "People told of a major incident on this service"}
     - {name: notes, type: text}
     - {name: discovered_by, type: data, read_only: true, no_copy: true, in_filter: true, description: "The discovery source that reports it"}
     - {name: discovery_key, type: data, read_only: true, no_copy: true, description: "What its discovery source calls it"}
@@ -49,6 +97,16 @@
     - {name: question, type: data, required: true, in_list: true}
     - {name: answer, type: text, in_list: true}
 
+- name: FulfilmentStep
+  label: Fulfilment Step
+  kind: child
+  fields:
+    - {name: step_name, type: data, required: true, in_list: true, label: Step}
+    - {name: sequence, type: int, default: 10, in_list: true, description: "Steps are done in this order when the offering runs them in order; steps with the same number open together"}
+    - {name: assignment_group, type: link, to: ItGroup, in_list: true, label: Group}
+    - {name: target_hours, type: int, default: 8, min: 1, in_list: true, label: Hours to Do It, description: "Working hours on the calendar itsm_hours, from when the task opens"}
+    - {name: instructions, type: text}
+
 - name: ServiceOffering
   label: Service Offering
   label_plural: Service Catalog
@@ -64,7 +122,11 @@
     - {name: response_hours, type: int, required: true, default: 4, min: 1, in_list: true, label: Hours to Respond, description: "Working hours on the calendar itsm_hours"}
     - {name: fulfil_hours, type: int, required: true, default: 24, min: 1, in_list: true, label: Hours to Fulfil, description: "Working hours on the calendar itsm_hours"}
     - {name: fulfilment_group, type: link, to: ItGroup, in_filter: true, description: "The group that fulfils requests for it: they are assigned to it as they are asked"}
+    - {name: approver_group, type: link, to: ItGroup, in_filter: true, description: "When it needs approval and this is set, its members decide, the number below of them, instead of one Change Manager. Left empty, nothing changes"}
+    - {name: approvals_needed, type: int, default: 1, min: 1, max: 5, label: Approvals Needed}
     - {name: questions, type: table, of: OfferingQuestion}
+    - {name: steps, type: table, of: FulfilmentStep, label: Fulfilment Steps, description: "The tasks made for each request once it is approved (or at once, when it needs none), for the groups named"}
+    - {name: steps_run, type: select, options: [In Order, At Once], default: In Order, label: Steps Run, description: "In Order: a step opens when those before it are done. At Once: all open together"}
     - {name: active, type: check, default: true, in_list: true, in_filter: true}
   list: {columns: [offering_name, service, needs_approval, fulfil_hours, fulfilment_group, active], sort: offering_name asc}
 
@@ -86,6 +148,9 @@
     - {name: assignment_group, type: link, to: ItGroup, in_list: true, in_filter: true}
     - {name: assigned_to, type: email, in_list: true, in_filter: true, label: Assignee, description: "One of the assignment group's members"}
     - {name: answers, type: table, of: RequestAnswer, description: "The answers to the offering's questions"}
+    - {name: route, type: select, options: [Manager, Group], read_only: true, no_copy: true, description: "Who approves it: one Change Manager, or the members of the offering's approver group"}
+    - {name: quorum, type: int, read_only: true, no_copy: true}
+    - {name: approver_members, type: json, read_only: true, no_copy: true, hidden: true}
     - {name: status, type: select, options: [Submitted, Approved, Awaiting Caller, Rejected, Fulfilled, Cancelled], default: Submitted, read_only: true, no_copy: true, in_list: true, in_filter: true}
     - {name: respond_by, type: datetime, no_copy: true, label: Respond By}
     - {name: respond_state, type: select, options: [running, paused, met, met_late, breached], no_copy: true, in_filter: true, label: Response Target}
@@ -130,11 +195,16 @@
     - {name: matrix, type: link, to: PriorityMatrix, read_only: true, no_copy: true, label: Priority Matrix Row}
     - {name: matrix_missing, type: check, read_only: true, no_copy: true, in_filter: true, label: Matrix Had No Row, description: "The Priority Matrix had no row for this impact and urgency, so the incident took priority P3 and the four and 24 working hours of the shipped P3 row"}
     - {name: priority, type: select, options: [P1, P2, P3, P4], read_only: true, in_list: true, in_filter: true}
-    - {name: major, type: check, read_only: true, in_filter: true, description: "P1 on a critical item"}
+    - {name: major, type: check, read_only: true, in_filter: true, description: "P1 on a critical item, or declared a major incident"}
+    - {name: major_declared, type: check, read_only: true, no_copy: true, label: Declared Major, description: "Declared a major incident by hand (Declare Major)"}
+    - {name: comms_plan, type: text, no_copy: true, label: Communication Plan, description: "Who is told what, and how often, while it is major"}
+    - {name: major_manager, type: email, no_copy: true, label: Major Incident Manager}
+    - {name: next_update_by, type: datetime, no_copy: true, label: Next Update By}
     - {name: status, type: select, options: [New, In Progress, On Hold, Awaiting Caller, Resolved, Closed], default: New, in_list: true, in_filter: true, description: "Awaiting Caller stops the response and resolution clocks"}
     - {name: assignment_group, type: link, to: ItGroup, in_list: true, in_filter: true}
     - {name: assigned_to, type: email, in_list: true, in_filter: true, label: Assignee, description: "One of the assignment group's members"}
-    - {name: problem, type: link, to: Problem}
+    - {name: problem, type: link, to: Problem, in_filter: true}
+    - {name: change, type: link, to: ItChange, in_filter: true, label: Caused By Change, description: "The change whose review opened this incident, or that is known to have caused it"}
     - {name: opened_at, type: datetime, read_only: true, no_copy: true}
     - {name: respond_by, type: datetime, no_copy: true, label: Respond By}
     - {name: respond_state, type: select, options: [running, paused, met, met_late, breached], no_copy: true, in_filter: true, label: Response Target}
@@ -157,6 +227,42 @@
       params: [{name: note, type: text, label: What is still wrong, required: true}]
       refuse_if: [{when: "daysBetween(doc.resolved_at, today) > settings.ItsmSettings.reopen_days", message: "it was resolved too long ago to reopen; raise a new incident"}]
       effects: [{type: set_fields, values: {status: "'In Progress'"}}, {type: create_document, entity: ItNote, values: {incident: doc.id, visibility: "'Visible to Caller'", body: "'Not resolved: ' + params.note"}}]
+    - name: declare_major
+      label: Declare Major
+      permission: write
+      roles: [Service Desk, Change Manager]
+      condition: "!doc.major_declared && doc.status != 'Resolved' && doc.status != 'Closed'"
+      params:
+        - {name: plan, type: text, label: Communication plan, required: true}
+        - {name: manager, type: email, label: Major incident manager}
+        - {name: next_update_by, type: datetime, label: Next update by}
+      effects:
+        - {type: set_fields, values: {major_declared: "true", comms_plan: params.plan, major_manager: user.email}}
+        - {type: set_fields, when: "has(params.manager) && !isEmpty(params.manager)", values: {major_manager: params.manager}}
+        - {type: set_fields, when: "has(params.next_update_by)", values: {next_update_by: params.next_update_by}}
+        - {type: message, template: itsm.major_declared, to: ["links:service.subscribers.subscriber"]}
+    - name: major_update
+      label: Send Update
+      permission: write
+      roles: [Service Desk, Change Manager]
+      condition: "doc.major_declared && doc.status != 'Resolved' && doc.status != 'Closed'"
+      params:
+        - {name: update, type: text, label: Update, required: true}
+        - {name: next_update_by, type: datetime, label: Next update by}
+      effects:
+        - {type: message, template: itsm.major_update, to: ["links:service.subscribers.subscriber"], values: {update: params.update}}
+        - {type: create_document, entity: ItNote, values: {incident: doc.id, visibility: "'Visible to Caller'", body: params.update}}
+        - {type: set_fields, when: "has(params.next_update_by)", values: {next_update_by: params.next_update_by}}
+    - name: end_major
+      label: Resolve Major Incident
+      permission: write
+      roles: [Service Desk, Change Manager]
+      condition: "doc.major_declared && doc.status != 'Resolved' && doc.status != 'Closed'"
+      params:
+        - {name: resolution, type: text, label: How it was resolved, required: true}
+      effects:
+        - {type: set_fields, values: {status: "'Resolved'", resolution: params.resolution}}
+        - {type: message, template: itsm.major_resolved, to: ["links:service.subscribers.subscriber"], values: {resolution: params.resolution}}
   targets:
     - {name: respond, label: Response, calendar: itsm_hours, within: "isEmpty(doc.matrix) ? 'PT4H' : links.matrix.response_time", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status != 'New'", due_field: respond_by, state_field: respond_state}
     - {name: resolve, label: Resolution, calendar: itsm_hours, within: "isEmpty(doc.matrix) ? 'PT24H' : links.matrix.resolution_time", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status == 'Resolved' || doc.status == 'Closed'", due_field: resolve_by, state_field: resolve_state}
@@ -169,16 +275,141 @@
   kind: master
   module: itsm
   title_field: title
-  description: The cause behind incidents. A known error has its workaround; resolved, it says its root cause and resolves the incidents still open under it.
+  description: The cause behind incidents, which link to it. Marked a known error with its workaround, and the workaround marked visible, it is published to the service desk's search and to the portal's suggestions. Resolved, it says its root cause and resolves the incidents still open under it, or offers to.
   fields:
     - {name: title, type: data, required: true, in_list: true}
     - {name: ci, type: link, to: ConfigurationItem, in_list: true}
     - {name: description, type: text}
+    - {name: symptoms, type: text, description: "What people see: the words they would search for. Published with the workaround"}
     - {name: status, type: select, options: [Open, Known Error, Resolved, Closed], default: Open, in_list: true, in_filter: true}
+    - {name: known_error, type: check, in_list: true, in_filter: true, label: Known Error, description: "The cause is known and there is a workaround"}
     - {name: workaround, type: text}
+    - {name: workaround_visible, type: check, in_filter: true, label: Publish the Workaround, description: "A known error's workaround is published to the service desk's search and the portal's suggestions"}
     - {name: root_cause, type: text}
+  rules:
+    - {name: visible_needs_known_error, check: "!doc.workaround_visible || doc.known_error || doc.status == 'Known Error'", field: workaround_visible, message: "only a known error's workaround is published"}
+  actions:
+    - name: resolve_linked_incidents
+      label: Resolve Its Incidents
+      permission: write
+      condition: "doc.status == 'Resolved' || doc.status == 'Closed'"
+      confirm: "Resolve the incidents still open under this problem with its root cause?"
+      effects:
+        - type: for_each
+          entity: Incident
+          link: problem
+          where: "item.status == 'New' || item.status == 'In Progress' || item.status == 'On Hold'"
+          effects:
+            - {type: find, entity: Incident, by: {id: item.id}, update: {status: "'Resolved'", resolution: "'Resolved with ' + doc.number + ': ' + doc.root_cause"}}
   numbering: {template: "PRB-{YYYY}-{seq:5}"}
-  list: {columns: [number, title, ci, status], sort: created_at desc}
+  search_fields: [title, symptoms, workaround, root_cause]
+  list: {columns: [number, title, ci, status, known_error], sort: created_at desc}
+
+- name: KnownError
+  label: Known Error
+  label_plural: Known Errors
+  kind: master
+  module: itsm
+  title_field: title
+  description: A problem's workaround as the service desk and the portal find it. Made and kept in step with a known error whose workaround is marked visible; the desk may also write one by hand.
+  fields:
+    - {name: title, type: data, required: true, in_list: true}
+    - {name: problem, type: link, to: Problem, unique: true, in_list: true, description: "The problem it publishes the workaround of, if any"}
+    - {name: service, type: link, to: ConfigurationItem, in_list: true, in_filter: true}
+    - {name: symptoms, type: text}
+    - {name: workaround, type: text, required: true}
+    - {name: published, type: check, default: true, in_list: true, in_filter: true, description: "Shown in the portal's suggestions: only a published known error is"}
+  search_fields: [title, symptoms, workaround]
+  list: {columns: [title, problem, service, published], sort: created_at desc}
+
+- name: ChangeType
+  label: Change Type
+  label_plural: Change Types
+  kind: master
+  module: itsm
+  title_field: type_name
+  description: "A kind of change and the path it takes. Pre-approved: from an approved template it needs no approval. Board: the members of its board decide, N of M. Emergency: a smaller group decides and the change is reviewed afterwards. A workspace adds its own types."
+  fields:
+    - {name: type_name, type: data, required: true, unique: true, in_list: true, label: Name}
+    - {name: path, type: select, options: [Pre-approved, Board, Emergency], default: Board, required: true, in_list: true, in_filter: true, description: "How a change of this type is approved"}
+    - {name: board, type: link, to: ItGroup, in_list: true, label: Approving Group, description: "The group whose members decide (a Pre-approved type names it for a change that is not from an approved template). It is an assignment group: its members are the approvers"}
+    - {name: quorum, type: int, default: 1, min: 1, max: 5, in_list: true, label: Approvals Needed, description: "How many members of the group must approve (N of M), at most 5"}
+    - {name: high_risk_group, type: link, to: ItGroup, label: Group for High Risk, description: "When the questionnaire or the person says High risk, one member of this group approves as well"}
+    - {name: review_after, type: check, in_list: true, label: Review Afterwards, description: "After it is implemented the change is reviewed before it can be closed (an emergency change usually is)"}
+    - {name: description, type: text}
+    - {name: active, type: check, default: true, in_list: true, in_filter: true}
+  list: {columns: [type_name, path, board, quorum, review_after, active], sort: type_name asc}
+
+- name: RiskChoice
+  label: Choice
+  kind: child
+  fields:
+    - {name: choice_label, type: data, required: true, in_list: true, label: Answer}
+    - {name: score, type: int, default: 0, min: 0, max: 100, in_list: true}
+
+- name: RiskQuestion
+  label: Risk Question
+  label_plural: Risk Questionnaire
+  kind: master
+  module: itsm
+  title_field: question_text
+  description: "A question asked of every change. Each answer scores; the scores of the questions that measure risk add up to the change's risk, those that measure impact to its impact, against the thresholds in the IT Services settings."
+  fields:
+    - {name: question_text, type: data, required: true, unique: true, in_list: true, label: Question}
+    - {name: measures, type: select, options: [Risk, Impact], default: Risk, required: true, in_list: true, in_filter: true}
+    - {name: position, type: int, default: 10, in_list: true, description: "Questions are asked in this order"}
+    - {name: choices, type: table, of: RiskChoice}
+    - {name: active, type: check, default: true, in_list: true, in_filter: true}
+  list: {columns: [question_text, measures, position, active], sort: position asc}
+
+- name: ChangeAnswer
+  label: Answer
+  kind: child
+  fields:
+    - {name: question, type: data, required: true, in_list: true}
+    - {name: answer, type: data, required: true, in_list: true}
+    - {name: score, type: int, read_only: true, in_list: true}
+
+- name: ChangeItem
+  label: Affected Item
+  kind: child
+  fields:
+    - {name: item, type: link, to: ConfigurationItem, required: true, in_list: true, description: "A configuration item or a business service the change touches"}
+
+- name: ChangeTemplate
+  label: Change Template
+  label_plural: Change Templates
+  kind: master
+  module: itsm
+  title_field: template_name
+  description: A change done the same way each time, with its plan, back-out plan and test plan. Once a Change Manager approves it, a change raised from it on a Pre-approved type needs no further approval.
+  fields:
+    - {name: template_name, type: data, required: true, unique: true, in_list: true, label: Name}
+    - {name: change_type, type: link, to: ChangeType, required: true, in_list: true}
+    - {name: ci, type: link, to: ConfigurationItem, in_list: true, label: Item Changed}
+    - {name: risk, type: select, options: [Low, Medium, High], default: Low}
+    - {name: change_plan, type: text, label: Plan}
+    - {name: backout_plan, type: text}
+    - {name: test_plan, type: text}
+    - {name: approved, type: check, read_only: true, no_copy: true, in_list: true, in_filter: true}
+    - {name: approved_by, type: email, read_only: true, no_copy: true}
+    - {name: active, type: check, default: true, in_list: true}
+  actions:
+    - {name: approve_template, label: Approve Template, permission: write, roles: [Change Manager], condition: "!doc.approved", effects: [{type: set_fields, values: {approved: "true", approved_by: "user.email"}}]}
+    - {name: withdraw_template, label: Withdraw Approval, permission: write, roles: [Change Manager], condition: "doc.approved", effects: [{type: set_fields, values: {approved: "false"}}]}
+    - name: raise_change
+      label: Raise a Change
+      permission: read
+      condition: "doc.active && doc.approved"
+      params:
+        - {name: title, type: data, label: Title, required: true}
+        - {name: planned_start, type: datetime, label: Starts, required: true}
+        - {name: planned_end, type: datetime, label: Ends, required: true}
+      effects:
+        - type: create_document
+          entity: ItChange
+          values: {title: params.title, ci: doc.ci, change_type: doc.change_type, template: doc.id, risk: doc.risk, change_plan: doc.change_plan, backout_plan: doc.backout_plan, test_plan: doc.test_plan, planned_start: params.planned_start, planned_end: params.planned_end}
+  list: {columns: [template_name, change_type, ci, risk, approved, active], sort: template_name asc}
 
 - name: ItChange
   label: Change
@@ -186,20 +417,41 @@
   kind: master
   module: itsm
   title_field: title
-  description: A change to something IT runs. Normal changes are approved by a change manager who did not raise them, and are kept out of freezes; no two approved changes touch one item at once.
+  description: A change to something IT runs, of a type that sets its path to approval. With the change board on, a normal change is approved by N of the members of a group, an emergency one by a smaller group and reviewed afterwards, and one raised from an approved template by no one; no two approved changes touch one item at once.
   fields:
     - {name: title, type: data, required: true, in_list: true}
+    - {name: change_type, type: link, to: ChangeType, in_list: true, in_filter: true, label: Type, description: "Left empty, the type named like the class below, or the first of that path"}
     - {name: ci, type: link, to: ConfigurationItem, required: true, in_list: true, in_filter: true, label: Item Changed}
-    - {name: kind, type: select, options: [Standard, Normal, Emergency], default: Normal, required: true, in_list: true, in_filter: true}
+    - {name: affected, type: table, of: ChangeItem, label: Also Affects, description: "Other services and configuration items the change touches"}
+    - {name: kind, type: select, options: [Standard, Normal, Emergency], default: Normal, required: true, in_list: true, in_filter: true, label: Class, description: "Follows the type's path: Pre-approved is Standard, Board is Normal, Emergency is Emergency. A change made without a type names one of these and takes the type of that name"}
+    - {name: template, type: link, to: ChangeTemplate, label: Raised From Template}
+    - {name: risk_answers, type: table, of: ChangeAnswer, label: Risk Questionnaire, description: "The answer to each question of the risk questionnaire; with any answered, risk and impact are worked out from them"}
     - {name: risk, type: select, options: [Low, Medium, High], default: Medium, in_list: true}
+    - {name: risk_score, type: int, read_only: true, no_copy: true}
+    - {name: impact_score, type: int, read_only: true, no_copy: true}
+    - {name: impact_level, type: select, options: [Low, Medium, High], read_only: true, no_copy: true, label: Impact}
     - {name: planned_start, type: datetime, required: true, in_list: true}
     - {name: planned_end, type: datetime, required: true}
+    - {name: change_plan, type: text, label: Plan}
     - {name: backout_plan, type: text}
+    - {name: test_plan, type: text}
     - {name: impacted, type: text, read_only: true, description: "The items that depend on or run on it, however far round"}
+    - {name: window_flags, type: text, read_only: true, no_copy: true, description: "Other scheduled changes on the same service or item in the same window, and any freeze it falls in"}
+    - {name: path, type: select, options: [Pre-approved, Board, Emergency], read_only: true, no_copy: true, in_filter: true}
+    - {name: route, type: select, options: [Pre-approved, Board, Emergency, Manager], read_only: true, no_copy: true, in_filter: true, description: "Who approves it: nobody (Pre-approved), the board, the emergency group, or one Change Manager (the settings say Single Manager)"}
+    - {name: quorum, type: int, read_only: true, no_copy: true}
+    - {name: board_members, type: json, read_only: true, no_copy: true, hidden: true}
+    - {name: escalation_members, type: json, read_only: true, no_copy: true, hidden: true}
+    - {name: second_look, type: check, read_only: true, no_copy: true, description: "High risk: one member of the type's high-risk group approves too"}
+    - {name: review_required, type: check, read_only: true, no_copy: true, in_filter: true}
     - {name: status, type: select, options: [Draft, Submitted, Approved, Implemented, Closed, Rejected, Failed], default: Draft, read_only: true, no_copy: true, in_list: true, in_filter: true}
     - {name: decided_by, type: email, read_only: true, no_copy: true}
     - {name: decision_note, type: text, read_only: true, no_copy: true}
     - {name: implemented_at, type: datetime, read_only: true, no_copy: true}
+    - {name: review_outcome, type: select, options: [Successful, Successful with Issues, Failed], read_only: true, no_copy: true, in_filter: true}
+    - {name: review_notes, type: text, read_only: true, no_copy: true}
+    - {name: reviewed_at, type: datetime, read_only: true, no_copy: true}
+    - {name: reviewed_by, type: email, read_only: true, no_copy: true}
   actions:
     - {name: submit_change, label: Submit It, permission: write, condition: "doc.status == 'Draft'"}
     - {name: approve_change, label: Approve It, permission: write, condition: "doc.status == 'Submitted'"}
@@ -207,8 +459,16 @@
     - {name: implement, label: Done, permission: write, condition: "doc.status == 'Approved'"}
     - {name: close_change, label: Close It, permission: write, condition: "doc.status == 'Implemented'", params: [{name: note, type: text, label: Review}]}
     - {name: fail_change, label: It Failed, permission: write, condition: "doc.status == 'Implemented'", params: [{name: note, type: text, label: What happened, required: true}]}
+    - name: review_change
+      label: Review It
+      permission: write
+      condition: "doc.status == 'Implemented'"
+      params:
+        - {name: outcome, type: select, options: [Successful, Successful with Issues, Failed], label: Outcome, required: true}
+        - {name: note, type: text, label: What we learned}
+        - {name: open_incident, type: check, label: Open an incident for it}
   numbering: {template: "CHG-{YYYY}-{seq:5}"}
-  list: {columns: [number, title, ci, kind, planned_start, status], sort: planned_start desc}
+  list: {columns: [number, title, ci, change_type, risk, planned_start, status], sort: planned_start desc}
 
 - name: ChangeFreeze
   label: Change Freeze

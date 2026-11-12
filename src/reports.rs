@@ -240,6 +240,42 @@ async fn change_success(ctx: &Ctx, p: &Params<'_>, tx: &mut Tx) -> Result<Value>
     .await
 }
 
+/// Scheduled changes (submitted, approved or being implemented) by window, each with the items it touches, the other
+/// scheduled changes on one of them in the same window, and the freeze it falls in.
+pub(crate) async fn change_calendar(ctx: &Ctx, p: &Params<'_>, tx: &mut Tx) -> Result<Value> {
+    let span = span(ctx, p)?;
+    const MINE: &str = "(select x.item from e_it_change__affected x where x.tenant_id = a.tenant_id and x.parent_id = a.id)";
+    let mut qb = scoped(
+        ctx,
+        "ItChange",
+        &format!(
+            "to_char(a.planned_start at time zone 'UTC', 'YYYY-MM-DD HH24:MI') || ' to ' || to_char(a.planned_end at time zone 'UTC', 'YYYY-MM-DD HH24:MI'),              a.number, a.title, coalesce(t.type_name, a.kind), a.status,              coalesce((select string_agg(i.ci_name, ', ' order by i.ci_name) from e_configuration_item i where i.tenant_id = a.tenant_id and (i.id = a.ci or i.id in {MINE})), ''),              coalesce((select string_agg(o.number, ', ' order by o.number) from e_it_change o where o.tenant_id = a.tenant_id and o.id <> a.id and o.status in ('Submitted', 'Approved')                and o.planned_start < a.planned_end and o.planned_end > a.planned_start and (o.ci = a.ci or o.ci in {MINE}                or exists (select 1 from e_it_change__affected y where y.tenant_id = o.tenant_id and y.parent_id = o.id and (y.item = a.ci or y.item in {MINE})))), ''),              coalesce((select string_agg(f.reason, ', ') from e_change_freeze f where f.tenant_id = a.tenant_id and f.starts_at < a.planned_end and f.ends_at > a.planned_start), '')"
+        ),
+        "e_it_change a left join e_change_type t on t.tenant_id = a.tenant_id and t.id = a.change_type",
+    )?;
+    qb.push(" and a.status in ('Submitted', 'Approved', 'Implemented') and a.planned_start < ")
+        .push_bind(span.1)
+        .push(" + 1 and a.planned_end >= ")
+        .push_bind(span.0);
+    qb.push(" order by a.planned_start, a.number");
+    table(
+        tx,
+        qb,
+        &[
+            ("window", "Window (UTC)", "data"),
+            ("number", "Change", "data"),
+            ("title", "Title", "data"),
+            ("type", "Type", "data"),
+            ("status", "Status", "data"),
+            ("items", "Items and Services", "data"),
+            ("collides", "Collides With", "data"),
+            ("freeze", "In Freeze For", "data"),
+        ],
+        json!({"from_date": span.0, "to_date": span.1, "note": "collides: another submitted or approved change on one of the same items or services in an overlapping window"}),
+    )
+    .await
+}
+
 #[async_trait]
 impl ReportSource for ItsmReports {
     fn catalog(&self) -> Vec<Value> {
@@ -252,6 +288,7 @@ impl ReportSource for ItsmReports {
             entry("itsm_time_to_resolve", "Mean Time to Resolve", "Incident", [dates(), vec![group_param("Priority")]].concat()),
             entry("itsm_requests_by_item", "Requests by Catalogue Item", "CatalogRequest", dates()),
             entry("itsm_change_success", "Change Success", "ItChange", dates()),
+            entry("itsm_change_calendar", "Change Calendar", "ItChange", dates()),
         ]
     }
 
@@ -264,6 +301,7 @@ impl ReportSource for ItsmReports {
             "itsm_time_to_resolve" => time_to_resolve(ctx, &p, &mut tx).await,
             "itsm_requests_by_item" => requests(ctx, &p, &mut tx).await,
             "itsm_change_success" => change_success(ctx, &p, &mut tx).await,
+            "itsm_change_calendar" => change_calendar(ctx, &p, &mut tx).await,
             _ => Err(Error::NotFound(format!("report {name}"))),
         };
         tx.rollback().await?;
