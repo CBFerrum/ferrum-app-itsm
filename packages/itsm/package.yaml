@@ -9,7 +9,7 @@ modules:
     label: IT Services
     icon: headset
     order: 57
-    items: [Incident, CatalogRequest, Problem, ItChange, ChangeType, ChangeTemplate, RiskQuestion, ConfigurationItem, ServiceOffering, KnownError, RequestTask, ChangeFreeze, ItGroup, ItCategory, PriorityMatrix, ItNote, ItsmSettings, report:itsm_open_incidents, report:itsm_target_compliance, report:itsm_time_to_resolve, report:itsm_requests_by_item, report:itsm_change_success, report:itsm_change_calendar]
+    items: [Incident, CatalogRequest, Problem, ItChange, ChangeType, ChangeTemplate, RiskQuestion, ConfigurationItem, CiClass, RelationType, ServiceOffering, KnownError, RequestTask, ChangeFreeze, ItGroup, ItCategory, PriorityMatrix, ItNote, ItsmSettings, report:itsm_open_incidents, report:itsm_target_compliance, report:itsm_time_to_resolve, report:itsm_requests_by_item, report:itsm_change_success, report:itsm_change_calendar]
 
 roles:
   - name: Service Desk
@@ -22,6 +22,8 @@ roles:
       - {entity: KnownError, read: true, write: true, create: true}
       - {entity: ItChange, read: true, write: true, create: true}
       - {entity: ConfigurationItem, read: true}
+      - {entity: CiClass, read: true}
+      - {entity: RelationType, read: true}
       - {entity: ServiceOffering, read: true}
       - {entity: ChangeFreeze, read: true}
       - {entity: ChangeType, read: true}
@@ -43,6 +45,8 @@ roles:
       - {entity: CatalogRequest, read: true, write: true}
       - {entity: RequestTask, read: true}
       - {entity: ConfigurationItem, read: true}
+      - {entity: CiClass, read: true}
+      - {entity: RelationType, read: true}
       - {entity: ServiceOffering, read: true}
       - {entity: Incident, read: true}
       - {entity: Problem, read: true}
@@ -55,6 +59,8 @@ roles:
     description: Keeps the configuration items, their relations, and the service catalog.
     permissions:
       - {entity: ConfigurationItem, read: true, write: true, create: true, export: true, import: true}
+      - {entity: CiClass, read: true, write: true, create: true}
+      - {entity: RelationType, read: true, write: true, create: true}
       - {entity: ServiceOffering, read: true, write: true, create: true}
       - {entity: Incident, read: true}
       - {entity: ItChange, read: true}
@@ -78,6 +84,8 @@ roles:
     description: "A discovery tool's account: reports what it finds to IT Services' discovery intake, and reads configuration items."
     permissions:
       - {entity: ConfigurationItem, read: true}
+      - {entity: CiClass, read: true}
+      - {entity: RelationType, read: true}
   - name: Requester
     description: Asks for things in the service catalog, and follows them.
     permissions:
@@ -114,6 +122,23 @@ seed:
       - {category_name: VPN, parent: "@ItCategory:category_name=Network"}
       - {category_name: Account and Password, parent: "@ItCategory:category_name=Access"}
       - {category_name: Permissions, parent: "@ItCategory:category_name=Access"}
+  - entity: CiClass
+    key: [class_name]
+    records:
+      - {class_name: Business Service}
+      - {class_name: Application}
+      - {class_name: Server}
+      - {class_name: Database}
+      - {class_name: Network Device}
+      - {class_name: Laptop}
+      - {class_name: Other}
+  - entity: RelationType
+    key: [relation_name]
+    records:
+      - {relation_name: Depends On, inverse_name: Is Depended On By, impact_flows: To the Item}
+      - {relation_name: Runs On, inverse_name: Hosts, impact_flows: To the Item}
+      - {relation_name: Part Of, inverse_name: Contains, impact_flows: To the Target}
+      - {relation_name: Connects To, inverse_name: Connects To, impact_flows: None}
   - entity: ItGroup
     key: [group_name]
     records:
@@ -199,3 +224,31 @@ messages:
           subject: "Resolved: {{ doc.number }} {{ doc.title }}"
           body: "<p>The major incident <b>{{ doc.number }}</b> is resolved.</p><p>{{ values.resolution }}</p>"
         text: {text: "Resolved: {{ doc.number }} {{ doc.title }}. {{ values.resolution }}"}
+
+# An outside inventory, pulled hourly: described, not connected. A workspace points `base` at its inventory, gives the
+# key, edits the operation and the mapping to what that inventory answers, and turns it on (Admin, Connections). Each
+# item it lists becomes (or updates) the configuration item of that name. No product is named.
+connections:
+  - name: itsm_inventory
+    label: Outside inventory
+    description:
+      base: "https://inventory.example.invalid"
+      auth: {type: bearer, secret: api_key}
+      operations:
+        list_items:
+          method: GET
+          path: /items
+          query: {updated_since: "{{ inputs.since }}"}
+          inputs: [since]
+          error_at: /error
+      pulls:
+        - name: items
+          operation: list_items
+          every_minutes: 60
+          items_at: /items
+          cursor: time
+          cursor_input: since
+          map:
+            entity: ConfigurationItem
+            by: {ci_name: item.name}
+            set: {serial_number: item.serial, location: item.location}

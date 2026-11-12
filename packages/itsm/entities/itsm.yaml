@@ -1,8 +1,46 @@
+- name: CiAttribute
+  label: Attribute
+  kind: child
+  fields:
+    - {name: attr_name, type: data, required: true, in_list: true, label: Attribute}
+    - {name: attr_type, type: select, options: [Text, Number, Date, Yes/No, Choice], default: Text, required: true, in_list: true, label: Kind}
+    - {name: required, type: check, in_list: true}
+    - {name: choices, type: data, visible_if: "doc.attr_type == 'Choice'", required_if: "doc.attr_type == 'Choice'", description: "The choices, separated by commas"}
+
+- name: CiClass
+  label: Configuration Item Class
+  label_plural: Item Classes
+  kind: master
+  module: itsm
+  title_field: class_name
+  description: "A kind of configuration item and the attributes it carries (a router's firmware, a laptop's asset tag). An item of the class holds a value for each attribute it declares, kept as the item's `attributes` and checked against this list when it is saved."
+  fields:
+    - {name: class_name, type: data, required: true, unique: true, in_list: true, label: Name}
+    - {name: description, type: text}
+    - {name: attributes, type: table, of: CiAttribute}
+    - {name: active, type: check, default: true, in_list: true, in_filter: true}
+  list: {columns: [class_name, active], sort: class_name asc}
+
+- name: RelationType
+  label: Relation Type
+  label_plural: Relation Types
+  kind: master
+  module: itsm
+  title_field: relation_name
+  description: "How one item relates to another, read from the item that lists it (Orders runs on Server 1). The impact route follows a relation only if its type says where a failure flows: To the Item (what depends on or runs on another is hit when that one fails), To the Target (a part is part of something that fails with it), or None."
+  fields:
+    - {name: relation_name, type: data, required: true, unique: true, in_list: true, label: Name}
+    - {name: inverse_name, type: data, in_list: true, label: Read From the Other End As}
+    - {name: impact_flows, type: select, options: [To the Item, To the Target, None], default: None, required: true, in_list: true, label: A Failure Flows}
+    - {name: active, type: check, default: true, in_list: true}
+  list: {columns: [relation_name, inverse_name, impact_flows, active], sort: relation_name asc}
+
 - name: CiRelation
   label: Relation
   kind: child
   fields:
-    - {name: kind, type: select, options: [Depends On, Runs On, Connects To], default: Depends On, required: true, in_list: true}
+    - {name: relation_type, type: link, to: RelationType, in_list: true, label: Relation, description: "Left empty, the type named like the kind below"}
+    - {name: kind, type: select, options: [Depends On, Runs On, Connects To], default: Depends On, required: true, in_list: true, description: "Kept for what was written before relation types: it follows the type when there is one"}
     - {name: target, type: link, to: ConfigurationItem, required: true, in_list: true}
 
 - name: ItSubscriber
@@ -21,7 +59,9 @@
   description: Something IT runs, and what it depends on or runs on. Nothing depends on itself, however far round. Discovery tools report what they find; what people keep is theirs.
   fields:
     - {name: ci_name, type: data, required: true, unique: true, in_list: true, label: Name}
-    - {name: ci_type, type: select, options: [Business Service, Application, Server, Database, Network Device, Laptop, Other], default: Application, in_list: true, in_filter: true, label: Type}
+    - {name: ci_class, type: link, to: CiClass, in_list: true, in_filter: true, label: Class, description: "Its class, which says what attributes it carries. Left empty, the class named like its type"}
+    - {name: ci_type, type: select, options: [Business Service, Application, Server, Database, Network Device, Laptop, Other], default: Application, in_filter: true, label: Type, description: "The coarse type, kept in step with a class named like one of these, else Other"}
+    - {name: attributes, type: json, label: Class Attributes, description: "The attributes its class declares, as {name: value}, checked when it is saved"}
     - {name: status, type: select, options: [Planned, Live, Retired], default: Live, in_list: true, in_filter: true}
     - {name: environment, type: select, options: [Production, Staging, Test, Development], default: Production, in_list: true, in_filter: true}
     - {name: criticality, type: select, options: [Low, Medium, High, Critical], default: Medium, in_list: true, in_filter: true}
