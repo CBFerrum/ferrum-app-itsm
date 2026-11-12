@@ -475,6 +475,11 @@ async fn scenario() {
     let asked = report("itsm_requests_by_item", desk.clone(), &[]).await;
     assert_eq!(cell(&asked, "VPN access", "requests"), json!(2), "Ann's and the desk's");
     assert_eq!(cell(&asked, "New laptop", "requests"), json!(1));
+    // This workspace is new, so the upkeep started it on the change board; the report below counts changes made
+    // the way a workspace upgraded from 0.3 makes them (one Change Manager, a standard change straight through).
+    let settings = uid(&t.k.list(&t.admin, "ItsmSettings", &Default::default()).await.unwrap().rows[0]["id"]);
+    assert_eq!(t.get("ItsmSettings", settings).await["change_approval"], "Change Board", "a new workspace starts on the board");
+    t.set(&t.admin, "ItsmSettings", settings, json!({"change_approval": "Single Manager"})).await.unwrap();
     let ci = uid(&t.insert(&cfg, "ConfigurationItem", json!({"ci_name": "Edge router", "ci_type": "Network Device"})).await["id"]);
     let ci2 = uid(&t.insert(&cfg, "ConfigurationItem", json!({"ci_name": "Core switch", "ci_type": "Network Device"})).await["id"]);
     for (item, day, ends) in [(ci, "2026-11-02", true), (ci2, "2026-11-03", false)] {

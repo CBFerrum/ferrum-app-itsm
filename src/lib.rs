@@ -51,6 +51,7 @@ pub fn register(hooks: &mut HookRegistry) {
         .register("ConfigurationItem", Arc::new(cmdb::CiHook))
         .register("CatalogRequest", Arc::new(desk::RequestHook))
         .register("ServiceOffering", Arc::new(desk::OfferingHook))
+        .register("RequestTask", Arc::new(desk::TaskHook))
         .register("Incident", Arc::new(desk::IncidentHook))
         .register("Problem", Arc::new(desk::ProblemHook))
         .register("ItNote", Arc::new(notes::NoteHook))
@@ -95,7 +96,9 @@ pub async fn maintenance_at(k: &Kernel, now: DateTime<Utc>) -> Result<()> {
             }
             let connected = schema.packages.iter().any(|p| p == CONNECTOR_PACKAGE);
             let ctx = Ctx::system(tenant, schema);
+            let upgraded = defaults::upgraded(k, &ctx).await?;
             defaults::ensure_defaults(k, &ctx).await?;
+            defaults::ensure_board(k, &ctx, upgraded).await?;
             let mut tx = k.db.tenant_tx(tenant).await?;
             defaults::ensure_calendar(&mut tx, tenant).await?;
             discovery::mark_missing(k, &ctx, &mut tx, now).await?;

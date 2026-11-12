@@ -6,6 +6,13 @@
     - {name: note_edit_minutes, type: int, label: Minutes a Note May Be Corrected, default: 5, min: 0, max: 1440, description: "Its author may correct a work note or comment for this long after posting it; then it is final. 0 = never"}
     - {name: reopen_days, type: int, label: Days a Resolved Incident May Be Reopened, default: 5, min: 0, max: 365, description: "A caller who finds a resolved incident is not resolved may reopen it for this many days"}
     - {name: defaults_made, type: check, read_only: true, hidden: true, no_copy: true, description: "The notifications IT Services starts with are made once; after that they are the workspace's"}
+    - {name: board_defaults_made, type: check, read_only: true, hidden: true, no_copy: true, description: "The change types, risk questions and boards of release 0.4 are made once for a workspace upgraded from an earlier release"}
+    - {name: change_approval, type: select, options: [Change Board, Single Manager], label: Who Approves a Change, description: "Change Board: a normal or emergency change is approved by the members of the board its change type names (N of M), a standard change from an approved template by no one. Single Manager: one Change Manager other than who raised it, as before release 0.4. Left empty it is Single Manager; a new workspace starts on Change Board"}
+    - {name: freeze_action, type: select, options: [Refuse, Warn], default: Refuse, label: A Change in a Freeze, description: "Refuse: a change planned inside a change freeze is refused (an emergency may fall in it). Warn: it is allowed and the freeze is flagged on the change"}
+    - {name: score_medium_from, type: int, default: 4, min: 1, label: Questionnaire Score for Medium, description: "A change whose risk (or impact) questions add up to this or more is Medium, until the next"}
+    - {name: score_high_from, type: int, default: 8, min: 1, label: Questionnaire Score for High, description: "A change whose risk (or impact) questions add up to this or more is High"}
+    - {name: impact_depth, type: int, default: 10, min: 1, max: 50, label: Impact Depth, description: "How many relations out from an item the impact route follows"}
+    - {name: problem_closes_incidents, type: select, options: [Offer, Automatically], label: Closing a Problem, description: "Automatically: the incidents still open under a problem that is resolved are resolved with it, as before release 0.4. Offer: they stay open and the problem offers a button that resolves them. Left empty it is Automatically; a new workspace starts on Offer"}
 
 - name: ItGroupMember
   label: Group Member
@@ -59,6 +66,32 @@
     - {name: response_duration, check: "doc.response_time.matches('^P([0-9]+D)?(T([0-9]+H)?([0-9]+M)?)?$') && size(doc.response_time) > 2", field: response_time, message: "is an ISO 8601 duration, such as PT30M, PT4H or P2D"}
     - {name: resolution_duration, check: "doc.resolution_time.matches('^P([0-9]+D)?(T([0-9]+H)?([0-9]+M)?)?$') && size(doc.resolution_time) > 2", field: resolution_time, message: "is an ISO 8601 duration, such as PT30M, PT4H or P2D"}
   list: {columns: [impact, urgency, priority, response_time, resolution_time], sort: priority asc}
+
+- name: RequestTask
+  label: Request Task
+  label_plural: Request Tasks
+  kind: master
+  module: itsm
+  title_field: step_name
+  description: One step of fulfilling a catalog request, for a group, made from the offering's steps once the request is approved. The request is fulfilled when its tasks are done.
+  fields:
+    - {name: request, type: link, to: CatalogRequest, required: true, in_list: true, in_filter: true}
+    - {name: step_name, type: data, required: true, in_list: true, label: Step}
+    - {name: sequence, type: int, default: 10, in_list: true}
+    - {name: assignment_group, type: link, to: ItGroup, in_list: true, in_filter: true}
+    - {name: assigned_to, type: email, in_list: true, in_filter: true, label: Assignee, description: "One of the group's members"}
+    - {name: instructions, type: text}
+    - {name: status, type: select, options: [Waiting, Open, Done], default: Waiting, read_only: true, no_copy: true, in_list: true, in_filter: true, description: "Waiting: an earlier step is not done. The clock runs only while it is Open"}
+    - {name: target_hours, type: int, default: 8, min: 1}
+    - {name: due_by, type: datetime, no_copy: true, in_list: true, label: Due}
+    - {name: task_state, type: select, options: [running, paused, met, met_late, breached], no_copy: true, in_filter: true, label: Target}
+    - {name: done_at, type: datetime, read_only: true, no_copy: true}
+  actions:
+    - {name: complete_task, label: Done, permission: write, condition: "doc.status == 'Open'"}
+  targets:
+    - {name: complete, label: Completion, calendar: itsm_hours, within: "'PT' + string(doc.target_hours) + 'H'", pause_when: "doc.status == 'Waiting'", met_when: "doc.status == 'Done'", due_field: due_by, state_field: task_state}
+  numbering: {template: "TASK-{YYYY}-{seq:5}"}
+  list: {columns: [number, step_name, request, assignment_group, assigned_to, status, due_by, task_state], sort: created_at desc}
 
 - name: ItNote
   label: Note
