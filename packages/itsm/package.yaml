@@ -81,12 +81,12 @@ seed:
       - {impact: High, urgency: High, priority: P1, response_time: PT15M, resolution_time: PT4H}
       - {impact: High, urgency: Medium, priority: P2, response_time: PT1H, resolution_time: PT8H}
       - {impact: Medium, urgency: High, priority: P2, response_time: PT1H, resolution_time: PT8H}
-      - {impact: High, urgency: Low, priority: P3, response_time: PT4H, resolution_time: P1D}
-      - {impact: Medium, urgency: Medium, priority: P3, response_time: PT4H, resolution_time: P1D}
-      - {impact: Low, urgency: High, priority: P3, response_time: PT4H, resolution_time: P1D}
-      - {impact: Medium, urgency: Low, priority: P4, response_time: PT8H, resolution_time: P3D}
-      - {impact: Low, urgency: Medium, priority: P4, response_time: PT8H, resolution_time: P3D}
-      - {impact: Low, urgency: Low, priority: P4, response_time: PT8H, resolution_time: P3D}
+      - {impact: High, urgency: Low, priority: P3, response_time: PT4H, resolution_time: PT24H}
+      - {impact: Medium, urgency: Medium, priority: P3, response_time: PT4H, resolution_time: PT24H}
+      - {impact: Low, urgency: High, priority: P3, response_time: PT4H, resolution_time: PT24H}
+      - {impact: Medium, urgency: Low, priority: P4, response_time: PT8H, resolution_time: PT72H}
+      - {impact: Low, urgency: Medium, priority: P4, response_time: PT8H, resolution_time: PT72H}
+      - {impact: Low, urgency: Low, priority: P4, response_time: PT8H, resolution_time: PT72H}
   - entity: ItCategory
     key: [category_name]
     records:

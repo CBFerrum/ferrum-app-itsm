@@ -45,14 +45,14 @@
   kind: master
   module: itsm
   title_field: matrix_name
-  description: "The priority an impact and an urgency give, and the response and resolution times of that priority, as ISO 8601 durations (PT30M, PT4H, P2D) counted on the working calendar itsm_hours (Admin, Calendars)."
+  description: "The priority an impact and an urgency give, and the response and resolution times of that priority, as ISO 8601 durations (PT30M, PT4H, P2D) counted as working time on the calendar itsm_hours (Admin, Calendars): PT24H is 24 working hours."
   fields:
     - {name: matrix_name, type: data, computed: "doc.impact + ' / ' + doc.urgency", in_list: true, label: Name}
     - {name: impact, type: select, options: [High, Medium, Low], required: true, in_list: true}
     - {name: urgency, type: select, options: [High, Medium, Low], required: true, in_list: true}
     - {name: priority, type: select, options: [P1, P2, P3, P4], required: true, in_list: true}
     - {name: response_time, type: data, required: true, in_list: true, default: PT4H}
-    - {name: resolution_time, type: data, required: true, in_list: true, default: P1D}
+    - {name: resolution_time, type: data, required: true, in_list: true, default: PT24H}
   unique: [[impact, urgency]]
   rules:
     - {name: response_duration, check: "doc.response_time.matches('^P([0-9]+D)?(T([0-9]+H)?([0-9]+M)?)?$') && size(doc.response_time) > 2", field: response_time, message: "is an ISO 8601 duration, such as PT30M, PT4H or P2D"}
