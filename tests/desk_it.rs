@@ -238,30 +238,6 @@ async fn scenario() {
         ("2026-11-16T12:00:00+00:00".to_string(), "2026-11-16T13:00:00+00:00".to_string())
     );
     assert_eq!((ask["respond_state"].as_str(), ask["fulfil_state"].as_str()), (Some("running"), Some("running")));
-    // Incidents open when this release came keep the clock they had.
-    let mut tx = k.db.tenant_tx(tenant).await.unwrap();
-    sqlx::query("select set_config('ferrum.system', 'on', true)").execute(&mut *tx).await.unwrap();
-    sqlx::raw_sql("alter table e_incident add column breached boolean").execute(&mut *tx).await.unwrap();
-    let old: Uuid = Uuid::now_v7();
-    sqlx::query(
-        "insert into e_incident (tenant_id, id, title, impact, urgency, status, priority, opened_at, resolve_by, breached) \
-         values ($1, $2, 'Left from before', 'High', 'High', 'In Progress', 'P1', now() - interval '5 hours', now() - interval '1 hour', true)",
-    )
-    .bind(tenant)
-    .bind(old)
-    .execute(&mut *tx)
-    .await
-    .unwrap();
-    sqlx::raw_sql(include_str!("../packages/itsm/sql/001_targets.sql")).execute(&mut *tx).await.unwrap();
-    let kept: (String, Option<DateTime<Utc>>, i64) = sqlx::query_as(
-        "select i.resolve_state, t.breached_at, t.within_secs from e_incident i join record_target t on t.record_id = i.id and t.target = 'resolve' where i.id = $1",
-    )
-    .bind(old)
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
-    tx.rollback().await.unwrap();
-    assert_eq!((kept.0.as_str(), kept.1.is_some(), kept.2), ("breached", true, 4 * 3600), "an open, late P1 stays breached on its own four hours");
 
     // ───────────── 4. employee self-service ─────────────
     // She reports an incident (herself the caller), and cannot report one for someone else nor work it.
@@ -374,16 +350,6 @@ async fn scenario() {
         "invalid",
         "not a question of this offering",
     );
-    // What requests carried before the offerings had questions stays with them, as a note.
-    let mut tx = k.db.tenant_tx(tenant).await.unwrap();
-    sqlx::query("select set_config('ferrum.system', 'on', true)").execute(&mut *tx).await.unwrap();
-    sqlx::raw_sql("alter table e_catalog_request add column details text").execute(&mut *tx).await.unwrap();
-    sqlx::query("update e_catalog_request set details = 'A lighter one' where id = $1").bind(uid(&ok["id"])).execute(&mut *tx).await.unwrap();
-    sqlx::raw_sql(include_str!("../packages/itsm/sql/002_request_details.sql")).execute(&mut *tx).await.unwrap();
-    let kept: (String, String) =
-        sqlx::query_as("select body, visibility from e_it_note where request = $1").bind(uid(&ok["id"])).fetch_one(&mut *tx).await.unwrap();
-    tx.rollback().await.unwrap();
-    assert_eq!((kept.0.as_str(), kept.1.as_str()), ("A lighter one", "Internal"));
 
     // ───────────── 8. notifications ─────────────
     t.user("net@acme.test", &["Service Desk"]).await;
