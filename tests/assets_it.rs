@@ -60,7 +60,7 @@ async fn scenario() {
     assert_eq!(catalog.links_out_of_reach(ferrum_app_itsm::CONNECTOR_PACKAGE), Vec::<String>::new(), "whoever links an asset can look it up");
     let mut hooks = HookRegistry::default();
     ferrum_domain::register(&mut hooks);
-    ferrum_app_erp::register(&mut hooks);
+    hooks.app("erp", &[], ferrum_app_erp::register);
     ferrum_app_assets::register(&mut hooks);
     ferrum_app_itsm::register(&mut hooks);
     let settings = KernelSettings { secret_key: Some(SecretKey::new([7u8; 32])), ..Default::default() };
