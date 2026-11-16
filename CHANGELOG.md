@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0
+
+Needs the same platform as 0.4.2. No interface change. The `itsm` package has no SQL of its own any more: its two
+files only converted records of earlier releases, and no installation was ever made from them, so a database is made
+afresh.
+
+- **`001_targets.sql`** put incidents and requests that were open when targets moved onto the platform's clock onto
+  it, from the dropped `breached` column and the old hour counts. Every record ITSM makes starts its targets on that
+  clock.
+- **`002_request_details.sql`** kept a request's dropped free-text details as an internal note. A request carries the
+  answers to its offering's questions.
+
+Tests: desk_it no longer adds the old columns back to run those files.
+
 ## 0.4.2
 
 Fixes from the first browser walk (interface only; the server is unchanged).
