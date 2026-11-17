@@ -42,7 +42,7 @@ self-service portal in one open-source app, on the same data as the rest of your
 
 | | |
 |---|---|
-| **Version** | 0.5.0 (platform `>=0.3.2, <0.4`) |
+| **Version** | 0.5.1 (platform `>=0.3.2, <0.4`) |
 | **Kind** | Own interface at `/itsm/` (the desk, change flow and calendar, problems, major incidents, catalog, configuration items), plus generic records screens; a portal for employees |
 | **What it adds** | 29 entities (19 main, 10 child tables), 6 roles, 6 reports, 3 message templates, 7 notification automations, 1 approval policy per change and request, 1 menu module |
 | **Depends on** | Ferrum core only |
@@ -189,8 +189,8 @@ self-service portal in one open-source app, on the same data as the rest of your
   settings. The score is shown while the form is filled, so what is shown is what saving keeps.
 - **Approval.** By the platform's approval policy: N of the members of a board for a normal change (up to five), a
   smaller group for an emergency (reviewed afterwards), one more look for a high-risk change, and nobody for a standard
-  change from an approved template. Reminders after 24 hours and escalation. A setting turns it on (new workspaces) or keeps
-  the older rule of one Change Manager other than who raised it (upgraded ones).
+  change from an approved template. Reminders after 24 hours and escalation. The setting Who Approves a Change chooses the
+  board (where a new workspace starts) or one Change Manager other than who raised the change.
 - **Templates.** A change done the same way each time, with its plans. Once a Change Manager approves a template, a change
   raised from it on a Pre-approved type needs no further approval. A template's approval can be withdrawn.
 - **Change calendar.** Scheduled changes by window as a month or a list, flagging collisions with another change on one of the same
@@ -392,7 +392,7 @@ Compared with ServiceNow ITSM, Jira Service Management, Freshservice, ManageEngi
 
 ### ✅ Recently shipped
 
-- [x] **0.5.0.** No upgrade history in the package: the two SQL files that converted records of earlier releases are gone.
+- [x] **0.5.1.** The interface starts through the frontend's `mountApp`, rebuilt with the current Ferrum-Frontend.
 - [x] **0.4.2.** Fixes from the first browser walk: a refused save moves to the first field in error with a linked summary; a board with too few members is said plainly.
 - [x] **0.4.1.** The interface's own screens: the desk, the change flow and calendar, problems, the major incident's messages, the catalog and configuration items with the impact walk.
 - [x] **0.4.0.** The change board, known errors published to search and the portal, major incident communication, catalog approver groups and fulfilment tasks, item classes, relation types and the impact route.
