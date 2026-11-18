@@ -64,7 +64,6 @@ async fn scenario() {
     ferrum_app_itsm::register(&mut hooks);
     let k = Kernel::boot(db, catalog, hooks, KernelSettings::default(), None).await.expect("boot");
     ferrum_domain::maintenance(&k).await.expect("partitions");
-    ferrum_app_erp::maintenance(&k).await.expect("partitions");
     let tenant = k
         .create_tenant(NewTenant {
             slug: "itassets".into(),
@@ -141,7 +140,7 @@ async fn scenario() {
 
     // ───────────── kept as Assets changes them ─────────────
     t.k.update(&a, "Asset", anns, obj(json!({"custodian": "bob@acme.test", "location": home.to_string()})), None).await.expect("moved before it is submitted");
-    ferrum_app_itsm::maintenance(&k).await.unwrap();
+    ferrum_app_itsm::maintenance(&k, t.admin.tenant).await.unwrap();
     let now = t.get("ConfigurationItem", item1).await;
     assert_eq!((now["ita_custodian"].as_str(), now["ita_location"].as_str()), (Some("bob@acme.test"), Some(home.to_string().as_str())));
     // Unlinked, it shows nothing of an asset.

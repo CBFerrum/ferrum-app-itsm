@@ -110,7 +110,7 @@ async fn scenario() {
     let desk = t.user("desk@acme.test", &["Service Desk"]).await;
     let cfg = t.user("cmdb@acme.test", &["Configuration Manager"]).await;
     let ann = t.user("ann@acme.test", &["IT Self Service"]).await;
-    ferrum_app_itsm::maintenance(&k).await.unwrap();
+    ferrum_app_itsm::maintenance(&k, t.tenant).await.unwrap();
 
     // ───────────── 2. problems, known errors, major incidents ─────────────
     let mail = uid(&t

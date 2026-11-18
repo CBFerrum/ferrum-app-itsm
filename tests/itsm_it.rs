@@ -311,8 +311,8 @@ async fn scenario() {
     assert!(matches!(report(&k, tenant, None, json!({})).await, Err(Error::Unauthorized(_))));
     // A week unreported: marked, its owner told once; reported again, cleared.
     t.set(&cfg, "ConfigurationItem", db_server, json!({"owner": "cmdb@acme.test"})).await.expect("its owner");
-    ferrum_app_itsm::maintenance_at(&k, Utc::now() + Duration::days(8)).await.unwrap();
-    ferrum_app_itsm::maintenance_at(&k, Utc::now() + Duration::days(9)).await.unwrap();
+    ferrum_app_itsm::maintenance_at(&k, tenant, Utc::now() + Duration::days(8)).await.unwrap();
+    ferrum_app_itsm::maintenance_at(&k, tenant, Utc::now() + Duration::days(9)).await.unwrap();
     let today = Utc::now().date_naive().to_string();
     assert_eq!(t.get("ConfigurationItem", db_server).await["missing_since"].as_str(), Some(today.as_str()));
     assert_eq!(t.get("ConfigurationItem", esx).await["status"], "Live", "never retired by itself");
