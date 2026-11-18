@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0
+
+Needs Ferrum 0.4.0 (apps' upkeep runs one workspace at a time, on whichever replica is free). No database or interface change.
+
+**Upkeep is one workspace's.** `maintenance(k, tenant)` and `maintenance_at(k, tenant, now)` do ITSM's upkeep (working calendar, defaults, items not reported, and with the connector the assets shown on items) for the one workspace the platform hands them; the list of workspaces and the installation check are the platform's. The connector check stays.
+
 ## 0.5.1
 
 Needs the same platform as 0.5.0. No database change. Interface only, `ui/dist` rebuilt with Ferrum-Frontend `06bd1a2`.

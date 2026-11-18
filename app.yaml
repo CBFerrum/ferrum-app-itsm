@@ -1,6 +1,6 @@
 id: itsm
 name: IT Services
-version: 0.5.1
+version: 0.6.0
 publisher: cbferrum
 summary: "Configuration items with classes and relations, a service catalog with approvals and tasks, incidents with targets, problems and known errors, and changes through a board, calendar and freezes"
 description: README.md
@@ -9,7 +9,7 @@ license: AGPL-3.0-only
 homepage: https://github.com/CBFerrum/ferrum-app-itsm
 support: https://github.com/CBFerrum/ferrum-app-itsm/issues
 runtime: native
-platform: ">=0.3.2, <0.4"
+platform: ">=0.4.0, <0.5"
 packages: [itsm]
 uninstall: ask
 # Its own interface at /itsm/: the desk, the change flow and calendar, problems, the catalog and the configuration items.

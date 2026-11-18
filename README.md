@@ -7,7 +7,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-0.5.1-0369a1?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.0-0369a1?style=flat-square)](CHANGELOG.md)
 [![Licence: AGPL-3.0](https://img.shields.io/badge/licence-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Ferrum platform](https://img.shields.io/badge/runs%20on-Ferrum-2f5bea?style=flat-square)](https://github.com/CBFerrum/Ferrum)
 ![Rust](https://img.shields.io/badge/Rust-server-b7410e?style=flat-square&logo=rust)
@@ -42,7 +42,7 @@ self-service portal in one open-source app, on the same data as the rest of your
 
 | | |
 |---|---|
-| **Version** | 0.5.1 (platform `>=0.3.2, <0.4`) |
+| **Version** | 0.6.0 (platform `>=0.4.0, <0.5`) |
 | **Kind** | Own interface at `/itsm/` (the desk, change flow and calendar, problems, major incidents, catalog, configuration items), plus generic records screens; a portal for employees |
 | **What it adds** | 29 entities (19 main, 10 child tables), 6 roles, 6 reports, 3 message templates, 7 notification automations, 1 approval policy per change and request, 1 menu module |
 | **Depends on** | Ferrum core only |
@@ -392,6 +392,7 @@ Compared with ServiceNow ITSM, Jira Service Management, Freshservice, ManageEngi
 
 ### ✅ Recently shipped
 
+- [x] **0.6.0.** Upkeep runs one workspace at a time, on whichever replica is free; needs Ferrum 0.4.0.
 - [x] **0.5.1.** The interface starts through the frontend's `mountApp`, rebuilt with the current Ferrum-Frontend.
 - [x] **0.4.2.** Fixes from the first browser walk: a refused save moves to the first field in error with a linked summary; a board with too few members is said plainly.
 - [x] **0.4.1.** The interface's own screens: the desk, the change flow and calendar, problems, the major incident's messages, the catalog and configuration items with the impact walk.
@@ -439,7 +440,7 @@ Compared with ServiceNow ITSM, Jira Service Management, Freshservice, ManageEngi
 ## 🚀 Install
 
 IT Services is a native Ferrum app, compiled into the Ferrum server. Workspace administrators install it from **Apps**
-(`/store/`). It needs platform `>=0.3.2, <0.4` and nothing else. The connector `itsm-assets` is offered where Assets is
+(`/store/`). It needs platform `>=0.4.0, <0.5` and nothing else. The connector `itsm-assets` is offered where Assets is
 installed too.
 
 1. Install IT Services.

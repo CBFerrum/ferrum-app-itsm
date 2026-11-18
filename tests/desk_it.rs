@@ -351,8 +351,8 @@ async fn scenario() {
 
     // ───────────── 8. notifications ─────────────
     t.user("net@acme.test", &["Service Desk"]).await;
-    ferrum_app_itsm::maintenance(&k).await.expect("upkeep makes the notifications the workspace starts with");
-    ferrum_app_itsm::maintenance(&k).await.expect("and only once");
+    ferrum_app_itsm::maintenance(&k, t.tenant).await.expect("upkeep makes the notifications the workspace starts with");
+    ferrum_app_itsm::maintenance(&k, t.tenant).await.expect("and only once");
     let count = |sql: &'static str| {
         let kk = k.clone();
         async move {
@@ -518,7 +518,7 @@ async fn scenario() {
     let mine = o.insert(&o.admin, "Incident", json!({"title": "Own row", "impact": "High", "urgency": "High"})).await;
     assert_eq!((mine["priority"].as_str(), mine["matrix_missing"].as_bool()), (Some("P2"), Some(false)), "the row it has is used");
     // The upkeep, with no administrator, makes the other eight rows, the categories, the calendar and the notices.
-    ferrum_app_itsm::maintenance(&k).await.expect("upkeep");
+    ferrum_app_itsm::maintenance(&k, o.tenant).await.expect("upkeep");
     assert_eq!(sql("select count(*) from e_priority_matrix where tenant_id = $1").await, 9);
     let kept = o.get("PriorityMatrix", o.named("PriorityMatrix", "matrix_name", "High / High").await).await;
     assert_eq!((kept["priority"].as_str(), kept["response_time"].as_str()), (Some("P2"), Some("PT30M")), "a row the workspace changed is not overwritten");
@@ -528,7 +528,7 @@ async fn scenario() {
     assert_eq!(sql("select count(*) from automation where tenant_id = $1 and name like 'IT Services:%'").await, 7);
     // A row it deletes afterwards stays deleted, and a second upkeep changes nothing.
     sql("delete from e_priority_matrix where tenant_id = $1 and impact = 'Low' and urgency = 'Low' returning 1::bigint").await;
-    ferrum_app_itsm::maintenance(&k).await.expect("upkeep again");
+    ferrum_app_itsm::maintenance(&k, t.tenant).await.expect("upkeep again");
     assert_eq!(sql("select count(*) from e_priority_matrix where tenant_id = $1").await, 8);
     let after = o.insert(&o.admin, "Incident", json!({"title": "Now a row", "impact": "High", "urgency": "Medium"})).await;
     assert_eq!((after["priority"].as_str(), after["matrix_missing"].as_bool()), (Some("P2"), Some(false)));

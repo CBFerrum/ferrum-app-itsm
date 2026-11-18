@@ -121,7 +121,7 @@ async fn scenario() {
     let exec = t.user("exec@acme.test", &["Requester"]).await;
     let emg = t.user("emg@acme.test", &["Requester"]).await;
     let outsider = t.user("other@acme.test", &["Requester"]).await;
-    ferrum_app_itsm::maintenance(&k).await.unwrap();
+    ferrum_app_itsm::maintenance(&k, t.tenant).await.unwrap();
     let st = t.get("ItsmSettings", t.settings().await).await;
     assert_eq!((st["change_approval"].as_str(), st["problem_closes_incidents"].as_str()), (Some("Change Board"), Some("Offer")));
     let standard = t.named("ChangeType", "type_name", "Standard").await;
@@ -361,8 +361,8 @@ async fn scenario() {
         )
         .await["id"]);
     assert!(o.get("ItChange", old).await["change_type"].is_null(), "no type before the upkeep");
-    ferrum_app_itsm::maintenance(&k).await.unwrap();
-    ferrum_app_itsm::maintenance(&k).await.unwrap();
+    ferrum_app_itsm::maintenance(&k, o.tenant).await.unwrap();
+    ferrum_app_itsm::maintenance(&k, o.tenant).await.unwrap();
     let st = o.get("ItsmSettings", o.settings().await).await;
     assert!(
         st["change_approval"].is_null() && st["problem_closes_incidents"].is_null(),
@@ -400,6 +400,6 @@ async fn scenario() {
         json!({"title": "Earlier", "ci": zi.to_string(), "kind": "Standard", "planned_start": "2026-11-20T10:00:00Z", "planned_end": "2026-11-20T12:00:00Z"}),
     )
     .await;
-    ferrum_app_itsm::maintenance(&k).await.unwrap();
+    ferrum_app_itsm::maintenance(&k, z.tenant).await.unwrap();
     assert!(z.get("ItsmSettings", z.settings().await).await["change_approval"].is_null(), "a workspace with changes is not new");
 }

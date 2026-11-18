@@ -28,7 +28,7 @@ mod reports;
 use chrono::{DateTime, Utc};
 use ferrum_domain::reports::ReportSource;
 use ferrum_domain::util::s;
-use ferrum_kernel::{Ctx, Doc, Error, HookRegistry, Kernel, Result};
+use ferrum_kernel::{Ctx, Doc, HookRegistry, Kernel, Result};
 use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -75,44 +75,30 @@ pub fn reports() -> Vec<Arc<dyn ReportSource>> {
     vec![Arc::new(reports::ItsmReports)]
 }
 
-/// Upkeep: the working calendar the targets count on made when absent, and once the notifications and seed rows a
-/// workspace upgraded from an earlier release lacks; items their discovery source no
-/// longer reports marked not seen; and, with the connector, what items show of their asset kept.
-pub async fn maintenance(k: &Kernel) -> Result<()> {
-    maintenance_at(k, Utc::now()).await
+/// One workspace's upkeep, which the platform runs about once a minute where ITSM is installed, on whichever replica is
+/// free, and may run again: the working calendar the targets count on made when absent, and once the notifications and
+/// seed rows a workspace upgraded from an earlier release lacks; items their discovery source no longer reports marked
+/// not seen; and, with the connector, what items show of their asset kept.
+pub async fn maintenance(k: &Kernel, tenant: Uuid) -> Result<()> {
+    maintenance_at(k, tenant, Utc::now()).await
 }
 
 /// [`maintenance`] as of `now`.
-pub async fn maintenance_at(k: &Kernel, now: DateTime<Utc>) -> Result<()> {
-    let mut tx = k.db.system_tx().await?;
-    let tenants: Vec<Uuid> = sqlx::query_scalar("select id from tenant where status = 'active' order by id").fetch_all(&mut *tx).await?;
-    tx.commit().await?;
-    let mut first_error: Option<Error> = None;
-    for tenant in tenants {
-        let run = async {
-            let schema = k.registry.schema(tenant).await?;
-            if !schema.packages.iter().any(|p| p == "itsm") {
-                return Ok(());
-            }
-            let connected = schema.packages.iter().any(|p| p == CONNECTOR_PACKAGE);
-            let ctx = Ctx::system(tenant, schema);
-            let upgraded = defaults::upgraded(k, &ctx).await?;
-            defaults::ensure_defaults(k, &ctx).await?;
-            defaults::ensure_board(k, &ctx, upgraded).await?;
-            let mut tx = k.db.tenant_tx(tenant).await?;
-            defaults::ensure_calendar(&mut tx, tenant).await?;
-            discovery::mark_missing(k, &ctx, &mut tx, now).await?;
-            if connected {
-                assets::refresh(k, &ctx, &mut tx).await?;
-            }
-            tx.commit().await?;
-            Ok::<(), Error>(())
-        };
-        if let Err(e) = run.await {
-            first_error.get_or_insert(e);
-        }
+pub async fn maintenance_at(k: &Kernel, tenant: Uuid, now: DateTime<Utc>) -> Result<()> {
+    let schema = k.registry.schema(tenant).await?;
+    let connected = schema.packages.iter().any(|p| p == CONNECTOR_PACKAGE);
+    let ctx = Ctx::system(tenant, schema);
+    let upgraded = defaults::upgraded(k, &ctx).await?;
+    defaults::ensure_defaults(k, &ctx).await?;
+    defaults::ensure_board(k, &ctx, upgraded).await?;
+    let mut tx = k.db.tenant_tx(tenant).await?;
+    defaults::ensure_calendar(&mut tx, tenant).await?;
+    discovery::mark_missing(k, &ctx, &mut tx, now).await?;
+    if connected {
+        assets::refresh(k, &ctx, &mut tx).await?;
     }
-    first_error.map_or(Ok(()), Err)
+    tx.commit().await?;
+    Ok(())
 }
 
 /// A document from JSON.
