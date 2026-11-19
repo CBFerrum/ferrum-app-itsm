@@ -160,10 +160,18 @@
     - {name: decision_note, type: text, read_only: true, no_copy: true}
     - {name: fulfilled_at, type: datetime, read_only: true, no_copy: true}
   actions:
-    - {name: approve_request, label: Approve It, permission: write, condition: "doc.status == 'Submitted'"}
-    - {name: reject_request, label: Reject It, permission: write, condition: "doc.status == 'Submitted'", params: [{name: note, type: text, label: Why, required: true}]}
-    - {name: fulfil, label: Fulfil It, permission: write, condition: "doc.status == 'Submitted' || doc.status == 'Approved'"}
-    - {name: cancel_request, label: Cancel It, permission: write, condition: "doc.status == 'Submitted' || doc.status == 'Approved'"}
+    - {name: approve_request, label: Approve It, permission: write, condition: "doc.status == 'Submitted'",
+       contract: {effect: transactional_action, returns: {type: object, properties: {status: {type: string}}},
+                  completion: "The request is Approved by a Change Manager other than who asked, and its fulfilment tasks exist, committed with this receipt. Where the offering's approver group decides, their approval is asked for instead and the request stays Submitted until enough of them agree"}}
+    - {name: reject_request, label: Reject It, permission: write, condition: "doc.status == 'Submitted'", params: [{name: note, type: text, label: Why, required: true}],
+       contract: {effect: transactional_action, returns: {type: object, properties: {status: {type: string}}},
+                  completion: "The request is Rejected with who decided and why, by a Change Manager other than who asked, committed with this receipt"}}
+    - {name: fulfil, label: Fulfil It, permission: write, condition: "doc.status == 'Submitted' || doc.status == 'Approved'",
+       contract: {effect: transactional_action, returns: {type: object, properties: {status: {type: string}}},
+                  completion: "The request is Fulfilled with the moment it was, committed with this receipt; refused while it waits for its approval or a task of it is not done"}}
+    - {name: cancel_request, label: Cancel It, permission: write, condition: "doc.status == 'Submitted' || doc.status == 'Approved'",
+       contract: {effect: transactional_action, returns: {type: object, properties: {status: {type: string}}},
+                  completion: "The request is Cancelled, committed with this receipt; tasks already made stay as they are"}}
   rules:
     - {name: subcategory_of_category, check: "isEmpty(doc.subcategory) || (!isEmpty(doc.category) && links.subcategory.parent == doc.category)", field: subcategory, message: "must be a subcategory of the category"}
   targets:
@@ -222,6 +230,10 @@
       permission: write
       condition: "doc.status == 'Resolved'"
       effects: [{type: set_fields, values: {status: "'Closed'"}}]
+      contract:
+        effect: transactional_action
+        returns: {type: object, properties: {status: {type: string}}}
+        completion: "The incident is Closed, committed with this receipt"
     - name: reject_resolution
       label: Not Resolved
       permission: write
@@ -229,6 +241,10 @@
       params: [{name: note, type: text, label: What is still wrong, required: true}]
       refuse_if: [{when: "daysBetween(doc.resolved_at, today) > settings.ItsmSettings.reopen_days", message: "it was resolved too long ago to reopen; raise a new incident"}]
       effects: [{type: set_fields, values: {status: "'In Progress'"}}, {type: create_document, entity: ItNote, values: {incident: doc.id, visibility: "'Visible to Caller'", body: "'Not resolved: ' + params.note"}}]
+      contract:
+        effect: transactional_action
+        returns: {type: object, properties: {status: {type: string}, made: {type: array, items: {type: object, properties: {entity: {type: string}, id: {type: string, format: uuid}, number: {type: [string, "null"]}}}}}}
+        completion: "The incident is In Progress again and a note its caller sees says what is still wrong, committed with this receipt; refused once it has been resolved longer than the settings' days to reopen"
     - name: declare_major
       label: Declare Major
       permission: write
@@ -243,6 +259,11 @@
         - {type: set_fields, when: "has(params.manager) && !isEmpty(params.manager)", values: {major_manager: params.manager}}
         - {type: set_fields, when: "has(params.next_update_by)", values: {next_update_by: params.next_update_by}}
         - {type: message, template: itsm.major_declared, to: ["links:service.subscribers.subscriber"]}
+      contract:
+        effect: external_effect
+        unknown_outcome: manual
+        returns: {type: object, properties: {status: {type: string}}}
+        completion: "The incident is a declared major incident with its communication plan, manager and next update time, committed with this receipt; the declaration is queued to the subscribers of its business service, and its delivery is not confirmed"
     - name: major_update
       label: Send Update
       permission: write
@@ -255,6 +276,11 @@
         - {type: message, template: itsm.major_update, to: ["links:service.subscribers.subscriber"], values: {update: params.update}}
         - {type: create_document, entity: ItNote, values: {incident: doc.id, visibility: "'Visible to Caller'", body: params.update}}
         - {type: set_fields, when: "has(params.next_update_by)", values: {next_update_by: params.next_update_by}}
+      contract:
+        effect: external_effect
+        unknown_outcome: manual
+        returns: {type: object, properties: {status: {type: string}, made: {type: array, items: {type: object, properties: {entity: {type: string}, id: {type: string, format: uuid}, number: {type: [string, "null"]}}}}}}
+        completion: "The update is a note the caller sees and the next update time is kept, committed with this receipt; the update is queued to the subscribers of its business service, and its delivery is not confirmed"
     - name: end_major
       label: Resolve Major Incident
       permission: write
@@ -265,6 +291,11 @@
       effects:
         - {type: set_fields, values: {status: "'Resolved'", resolution: params.resolution}}
         - {type: message, template: itsm.major_resolved, to: ["links:service.subscribers.subscriber"], values: {resolution: params.resolution}}
+      contract:
+        effect: external_effect
+        unknown_outcome: manual
+        returns: {type: object, properties: {status: {type: string}}}
+        completion: "The incident is Resolved with how it was resolved, committed with this receipt; the resolution is queued to the subscribers of its business service, and its delivery is not confirmed"
   targets:
     - {name: respond, label: Response, calendar: itsm_hours, within: "isEmpty(doc.matrix) ? 'PT4H' : links.matrix.response_time", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status != 'New'", due_field: respond_by, state_field: respond_state}
     - {name: resolve, label: Resolution, calendar: itsm_hours, within: "isEmpty(doc.matrix) ? 'PT24H' : links.matrix.resolution_time", pause_when: "doc.status == 'Awaiting Caller'", met_when: "doc.status == 'Resolved' || doc.status == 'Closed'", due_field: resolve_by, state_field: resolve_state}
@@ -303,6 +334,10 @@
           where: "item.status == 'New' || item.status == 'In Progress' || item.status == 'On Hold'"
           effects:
             - {type: find, entity: Incident, by: {id: item.id}, update: {status: "'Resolved'", resolution: "'Resolved with ' + doc.number + ': ' + doc.root_cause"}}
+      contract:
+        effect: transactional_action
+        returns: {type: object, properties: {status: {type: string}}}
+        completion: "Every incident under this problem that was New, In Progress or On Hold is Resolved with the problem's number and root cause, committed with this receipt"
   numbering: {template: "PRB-{YYYY}-{seq:5}"}
   search_fields: [title, symptoms, workaround, root_cause]
   list: {columns: [number, title, ci, status, known_error], sort: created_at desc}
@@ -397,8 +432,12 @@
     - {name: approved_by, type: email, read_only: true, no_copy: true}
     - {name: active, type: check, default: true, in_list: true}
   actions:
-    - {name: approve_template, label: Approve Template, permission: write, roles: [Change Manager], condition: "!doc.approved", effects: [{type: set_fields, values: {approved: "true", approved_by: "user.email"}}]}
-    - {name: withdraw_template, label: Withdraw Approval, permission: write, roles: [Change Manager], condition: "doc.approved", effects: [{type: set_fields, values: {approved: "false"}}]}
+    - {name: approve_template, label: Approve Template, permission: write, roles: [Change Manager], condition: "!doc.approved", effects: [{type: set_fields, values: {approved: "true", approved_by: "user.email"}}],
+       contract: {effect: transactional_action, compensate_with: withdraw_template, returns: {type: object, properties: {}},
+                  completion: "The template is approved by the caller, committed with this receipt: a change raised from it on a pre-approved type needs no approval"}}
+    - {name: withdraw_template, label: Withdraw Approval, permission: write, roles: [Change Manager], condition: "doc.approved", effects: [{type: set_fields, values: {approved: "false"}}],
+       contract: {effect: transactional_action, returns: {type: object, properties: {}},
+                  completion: "The template is no longer approved, committed with this receipt; changes already raised from it are as they were"}}
     - name: raise_change
       label: Raise a Change
       permission: read
@@ -411,6 +450,10 @@
         - type: create_document
           entity: ItChange
           values: {title: params.title, ci: doc.ci, change_type: doc.change_type, template: doc.id, risk: doc.risk, change_plan: doc.change_plan, backout_plan: doc.backout_plan, test_plan: doc.test_plan, planned_start: params.planned_start, planned_end: params.planned_end}
+      contract:
+        effect: transactional_action
+        returns: {type: object, properties: {made: {type: array, items: {type: object, properties: {entity: {type: string}, id: {type: string, format: uuid}, number: {type: [string, "null"]}}}}}}
+        completion: "A draft change exists with the template's item, type, risk and plans and the window given, committed with this receipt; it is not submitted"
   list: {columns: [template_name, change_type, ci, risk, approved, active], sort: template_name asc}
 
 - name: ItChange
@@ -455,12 +498,24 @@
     - {name: reviewed_at, type: datetime, read_only: true, no_copy: true}
     - {name: reviewed_by, type: email, read_only: true, no_copy: true}
   actions:
-    - {name: submit_change, label: Submit It, permission: write, condition: "doc.status == 'Draft'"}
-    - {name: approve_change, label: Approve It, permission: write, condition: "doc.status == 'Submitted'"}
-    - {name: reject_change, label: Reject It, permission: write, condition: "doc.status == 'Submitted'", params: [{name: note, type: text, label: Why, required: true}]}
-    - {name: implement, label: Done, permission: write, condition: "doc.status == 'Approved'"}
-    - {name: close_change, label: Close It, permission: write, condition: "doc.status == 'Implemented'", params: [{name: note, type: text, label: Review}]}
-    - {name: fail_change, label: It Failed, permission: write, condition: "doc.status == 'Implemented'", params: [{name: note, type: text, label: What happened, required: true}]}
+    - {name: submit_change, label: Submit It, permission: write, condition: "doc.status == 'Draft'",
+       contract: {effect: transactional_action, returns: {type: object, properties: {status: {type: string}}},
+                  completion: "The change is Submitted for its approval, or Approved at once when its route is pre-approved and nothing else is approved on its item in its window, committed with this receipt; refused while its approving group has fewer members than the type asks"}}
+    - {name: approve_change, label: Approve It, permission: write, condition: "doc.status == 'Submitted'",
+       contract: {effect: transactional_action, returns: {type: object, properties: {status: {type: string}}},
+                  completion: "The change is Approved, no other approved change being on its item in its window, committed with this receipt; one Change Manager other than who raised it decides, or, where its board or emergency group decides, their approval is asked for instead and the change stays Submitted until enough of them agree"}}
+    - {name: reject_change, label: Reject It, permission: write, condition: "doc.status == 'Submitted'", params: [{name: note, type: text, label: Why, required: true}],
+       contract: {effect: transactional_action, returns: {type: object, properties: {status: {type: string}}},
+                  completion: "The change is Rejected with who decided and why, by a Change Manager other than who raised it, committed with this receipt"}}
+    - {name: implement, label: Done, permission: write, condition: "doc.status == 'Approved'",
+       contract: {effect: transactional_action, returns: {type: object, properties: {status: {type: string}}},
+                  completion: "The change is Implemented with the moment it was, committed with this receipt"}}
+    - {name: close_change, label: Close It, permission: write, condition: "doc.status == 'Implemented'", params: [{name: note, type: text, label: Review}],
+       contract: {effect: transactional_action, returns: {type: object, properties: {status: {type: string}}},
+                  completion: "The change is Closed, committed with this receipt; refused while the review its type asks for is not recorded"}}
+    - {name: fail_change, label: It Failed, permission: write, condition: "doc.status == 'Implemented'", params: [{name: note, type: text, label: What happened, required: true}],
+       contract: {effect: transactional_action, returns: {type: object, properties: {status: {type: string}}},
+                  completion: "The change is Failed with what happened, committed with this receipt"}}
     - name: review_change
       label: Review It
       permission: write
@@ -469,6 +524,10 @@
         - {name: outcome, type: select, options: [Successful, Successful with Issues, Failed], label: Outcome, required: true}
         - {name: note, type: text, label: What we learned}
         - {name: open_incident, type: check, label: Open an incident for it}
+      contract:
+        effect: transactional_action
+        returns: {type: object, properties: {status: {type: string}, incident: {type: [string, "null"], format: uuid, x-ferrum-link: Incident}}}
+        completion: "The review's outcome, notes, reviewer and time are kept and the change is Closed, or Failed when the outcome is Failed, with an incident opened for a failed change when asked, committed with this receipt"
   numbering: {template: "CHG-{YYYY}-{seq:5}"}
   list: {columns: [number, title, ci, change_type, risk, planned_start, status], sort: planned_start desc}
 

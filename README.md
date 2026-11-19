@@ -7,7 +7,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-0.6.2-0369a1?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.3-0369a1?style=flat-square)](CHANGELOG.md)
 [![Licence: AGPL-3.0](https://img.shields.io/badge/licence-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Ferrum platform](https://img.shields.io/badge/runs%20on-Ferrum-2f5bea?style=flat-square)](https://github.com/CBFerrum/Ferrum)
 ![Rust](https://img.shields.io/badge/Rust-server-b7410e?style=flat-square&logo=rust)
@@ -42,7 +42,7 @@ self-service portal in one open-source app, on the same data as the rest of your
 
 | | |
 |---|---|
-| **Version** | 0.6.2 (platform `>=0.4.0, <0.5`) |
+| **Version** | 0.6.3 (platform `>=0.4.0, <0.5`) |
 | **Kind** | Own interface at `/itsm/` (the desk, change flow and calendar, problems, major incidents, catalog, configuration items), plus generic records screens; a portal for employees |
 | **What it adds** | 29 entities (19 main, 10 child tables), 6 roles, 6 reports, 3 message templates, 7 notification automations, 1 approval policy per change and request, 1 menu module |
 | **Depends on** | Ferrum core only |
@@ -250,6 +250,13 @@ cannot read falls back to the next you can, and a column you cannot read is left
 - **Requester, IT Self Service.** See above.
 - **Discovery Agent.** A tool's account for the intake.
 
+### 🔒 Personal data
+
+- **What an erasure blanks.** A caller's address, name and phone on their incidents and catalog requests, the copy of
+  their address on notes, and their row as a subscriber of a service (no one else's). Asked by phone number, the
+  records with that number are theirs too; a name alone only lists records as possibly theirs.
+- **What it keeps.** Staff addresses (assignees, note authors, group members) are work records, moved by a handover.
+
 ## 🧭 How it works
 
 ```mermaid
@@ -322,7 +329,7 @@ Reports: six, listed under Features. Print formats: none ship. Messages: three m
 | **Platform approvals** | Change board and request approver groups, reminders and escalation | Platform |
 | **Notifications and automations** | Seven shipped automations, editable | Platform; mail for email |
 | **Portal** | IT Self Service people use the catalog and follow requests | Portal switched on |
-| **MCP** | AI agents work with the records under each person's permissions | Platform's MCP server |
+| **MCP** | AI agents work with the records and press every action through the gate, each with its contract, under each person's permissions | Platform's MCP server |
 
 ## 📊 How it compares
 
@@ -395,6 +402,7 @@ Compared with ServiceNow ITSM, Jira Service Management, Freshservice, ManageEngi
 
 ### ✅ Recently shipped
 
+- [x] **0.6.3.** Every action says what it promises (an agent calls each through the gate under a key); a caller's and a subscriber's data is declared, so an erasure reaches them.
 - [x] **0.6.2.** Reports group, filter and show only what you may read; a default you cannot read falls back to one you can.
 - [x] **0.6.1.** Confirming or rejecting a resolution needs the right to change the incident: its caller (the portal rule names both) or the desk.
 - [x] **0.6.0.** Upkeep runs one workspace at a time, on whichever replica is free; needs Ferrum 0.4.0.
