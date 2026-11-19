@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.1
+
+Needs the same platform as 0.6.0. No database or interface change.
+
+- **Confirming or rejecting a resolution needs the right to change the incident** (S9 K0-6). Both actions were declared
+  `permission: read`, so anyone who could read an incident (a Change Manager, a Configuration Manager) could close it, or
+  reopen it with a comment in the caller's name. They are `permission: write` now: the caller presses them through IT Self
+  Service's rule, which names them, on the incidents that are theirs; the desk, who may change incidents, presses them for a
+  caller (one who confirmed by phone); anyone else is refused and nothing changes. Test
+  `a_change_manager_cannot_close_an_incident_for_its_caller` (`tests/desk_it.rs`).
+
 ## 0.6.0
 
 Needs Ferrum 0.4.0 (apps' upkeep runs one workspace at a time, on whichever replica is free). No database or interface change.
