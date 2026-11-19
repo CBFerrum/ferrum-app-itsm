@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.2
+
+Needs the same platform as 0.6.0 (its `reports::readable_choice`, `readable_default` and `readable_columns`, on Ferrum's
+main since K0-1). No database or interface change.
+
+- **Reports group, filter and show only what the caller may read** (S9 K0-7). A grouping by a field the caller cannot read
+  (Priority, Assignment Group and its name, Category and its name, Assignee, Month or Age) is refused; with none chosen, a
+  report falls back from Priority to the next grouping the caller reads; a column of a field they cannot read (a resolution
+  or response target's state, the hours worked out from when an incident was opened, a request's or a change's status) is
+  left out of the columns, the rows and the totals; a report whose rows are made of such a field (the open incidents'
+  status, the period's date, Change Success's class, the calendar's window) is refused rather than answered. The change
+  calendar names the freeze a change falls in only to whoever reads freezes. Open Incidents also offers Month, which it
+  already took. Tests in `tests/reports_it.rs`: `a_report_refuses_grouping_by_a_field_the_caller_cannot_read`,
+  `a_report_s_default_falls_back_to_a_readable_grouping`, `a_report_leaves_out_columns_the_caller_cannot_read`.
+
 ## 0.6.1
 
 Needs the same platform as 0.6.0. No database or interface change.

@@ -7,7 +7,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-0.6.1-0369a1?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.2-0369a1?style=flat-square)](CHANGELOG.md)
 [![Licence: AGPL-3.0](https://img.shields.io/badge/licence-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Ferrum platform](https://img.shields.io/badge/runs%20on-Ferrum-2f5bea?style=flat-square)](https://github.com/CBFerrum/Ferrum)
 ![Rust](https://img.shields.io/badge/Rust-server-b7410e?style=flat-square&logo=rust)
@@ -42,7 +42,7 @@ self-service portal in one open-source app, on the same data as the rest of your
 
 | | |
 |---|---|
-| **Version** | 0.6.1 (platform `>=0.4.0, <0.5`) |
+| **Version** | 0.6.2 (platform `>=0.4.0, <0.5`) |
 | **Kind** | Own interface at `/itsm/` (the desk, change flow and calendar, problems, major incidents, catalog, configuration items), plus generic records screens; a portal for employees |
 | **What it adds** | 29 entities (19 main, 10 child tables), 6 roles, 6 reports, 3 message templates, 7 notification automations, 1 approval policy per change and request, 1 menu module |
 | **Depends on** | Ferrum core only |
@@ -239,6 +239,9 @@ Automations. Item owners are told when discovery no longer finds their item.
 | **Change Success** | Changes by type and outcome |
 | **Change Calendar** | Scheduled changes with their collisions and freezes |
 
+A report groups, filters and shows only fields you may read: a grouping you cannot read is refused, a default you
+cannot read falls back to the next you can, and a column you cannot read is left out.
+
 ### 🔐 Roles
 
 - **Service Desk.** Works incidents, requests and tasks, and records problems and known errors.
@@ -392,6 +395,7 @@ Compared with ServiceNow ITSM, Jira Service Management, Freshservice, ManageEngi
 
 ### ✅ Recently shipped
 
+- [x] **0.6.2.** Reports group, filter and show only what you may read; a default you cannot read falls back to one you can.
 - [x] **0.6.1.** Confirming or rejecting a resolution needs the right to change the incident: its caller (the portal rule names both) or the desk.
 - [x] **0.6.0.** Upkeep runs one workspace at a time, on whichever replica is free; needs Ferrum 0.4.0.
 - [x] **0.5.1.** The interface starts through the frontend's `mountApp`, rebuilt with the current Ferrum-Frontend.
