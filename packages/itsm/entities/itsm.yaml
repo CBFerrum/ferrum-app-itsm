@@ -215,14 +215,16 @@
   rules:
     - {name: subcategory_of_category, check: "isEmpty(doc.subcategory) || (!isEmpty(doc.category) && links.subcategory.parent == doc.category)", field: subcategory, message: "must be a subcategory of the category"}
   actions:
+    # Each changes the incident: the caller presses them through IT Self Service's rule, which names them (package.yaml);
+    # the desk, who may change incidents, for a caller; anyone who only reads incidents may not (S9 K0-6).
     - name: confirm_resolution
       label: Confirm Resolved
-      permission: read
+      permission: write
       condition: "doc.status == 'Resolved'"
       effects: [{type: set_fields, values: {status: "'Closed'"}}]
     - name: reject_resolution
       label: Not Resolved
-      permission: read
+      permission: write
       condition: "doc.status == 'Resolved'"
       params: [{name: note, type: text, label: What is still wrong, required: true}]
       refuse_if: [{when: "daysBetween(doc.resolved_at, today) > settings.ItsmSettings.reopen_days", message: "it was resolved too long ago to reopen; raise a new incident"}]

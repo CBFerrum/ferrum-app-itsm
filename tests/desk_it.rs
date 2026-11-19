@@ -69,6 +69,28 @@ fn refused<V: std::fmt::Debug>(r: Result<V, Error>, kind: &str, says: &str) {
     assert!(ok && msg.contains(says), "expected {kind} saying {says:?}, got {msg}");
 }
 
+/// Confirming or rejecting a resolution changes the incident, so it is the caller's (the portal rule names both) or
+/// the desk's (write); someone who only reads the incident, and is not its caller, changes nothing (S9 K0-6).
+async fn a_change_manager_cannot_close_an_incident_for_its_caller(t: &T, desk: &Ctx) {
+    let manager = t.user("cm.k06@acme.test", &["Change Manager"]).await;
+    let inc = uid(&t.insert(desk, "Incident", json!({"title": "Monitor flickers", "caller_email": "eve.k06@acme.test"})).await["id"]);
+    t.set(desk, "Incident", inc, json!({"status": "Resolved", "resolution": "New cable"})).await.unwrap();
+    assert!(t.k.get(&manager, "Incident", inc, false).await.is_ok(), "a Change Manager reads incidents");
+    let notes = || async {
+        let q = ListQuery { filters: ferrum_kernel::query::parse_filters(&json!({"incident": inc.to_string()})).unwrap(), ..Default::default() };
+        t.k.list(&t.admin, "ItNote", &q).await.unwrap().rows.len()
+    };
+    let before = notes().await;
+    refused(t.act(&manager, "Incident", inc, "confirm_resolution", Value::Null).await, "forbidden", "");
+    refused(t.act(&manager, "Incident", inc, "reject_resolution", json!({"note": "Not fixed, says I"})).await, "forbidden", "");
+    let after = t.get("Incident", inc).await;
+    assert_eq!((after["status"].as_str(), after["resolution"].as_str()), (Some("Resolved"), Some("New cable")), "nothing changed");
+    assert_eq!(notes().await, before, "no note was added");
+    // The desk, who may change the incident, still closes it for a caller who confirmed by phone.
+    t.act(desk, "Incident", inc, "confirm_resolution", Value::Null).await.expect("the desk closes it");
+    assert_eq!(t.get("Incident", inc).await["status"], "Closed");
+}
+
 #[test]
 fn a_service_desk() {
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().thread_stack_size(16 << 20).build().unwrap();
@@ -287,6 +309,7 @@ async fn scenario() {
         thread.iter().any(|n| n["body"].as_str().is_some_and(|b| b.contains("It broke again")) && n["visibility"] == "Visible to Caller"),
         "her reason is in the thread"
     );
+    a_change_manager_cannot_close_an_incident_for_its_caller(&t, &desk).await;
 
     // ───────────── 5. catalogue items with their own form ─────────────
     let laptop_item = uid(&t
