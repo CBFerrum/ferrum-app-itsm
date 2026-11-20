@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.6.3
+
+Needs the same platform as 0.6.0. The `itsm` package is 0.3.0 (declarations only: no table changes, no record changes).
+
+- **A caller's and a subscriber's data is declared** (a fault: the package declared none, so an erasure blanked nothing in
+  IT Services and its answer named the package as declaring nothing). `personal_data` now covers a caller on incidents and
+  catalog requests (address, name and phone, found by address or phone, listed by name for a person to judge), the copy of
+  the caller's address on notes, and a subscriber's row on a configuration item (only their row goes). Staff addresses
+  (assignees, note authors, group members) are work records, moved by a handover, not erased. Tests
+  `a_callers_data_is_found_and_erased`, `an_erasure_leaves_other_callers_alone` (`tests/contracts_it.rs`).
+- **Every action says what it promises.** Each of the 21 actions carries a `contract`: its effect (the three major-incident
+  messages are outside effects whose delivery a person settles; the rest are transactional), what it returns and what
+  "done" means, from its handler. An agent calls them as `itsm.<entity>.<action>` through the gate, under a key; a repeat
+  under the key answers what was done. Tests `every_action_says_what_done_means`,
+  `major_incident_messages_are_outside_effects`, `complete_task_repeats_under_one_key`, `a_change_without_a_key_is_refused`,
+  `someone_without_the_right_is_refused`.
+
+## 0.6.2
+
+Needs the same platform as 0.6.0 (its `reports::readable_choice`, `readable_default` and `readable_columns`, on Ferrum's
+main since K0-1). No database or interface change.
+
+- **Reports group, filter and show only what the caller may read** (S9 K0-7). A grouping by a field the caller cannot read
+  (Priority, Assignment Group and its name, Category and its name, Assignee, Month or Age) is refused; with none chosen, a
+  report falls back from Priority to the next grouping the caller reads; a column of a field they cannot read (a resolution
+  or response target's state, the hours worked out from when an incident was opened, a request's or a change's status) is
+  left out of the columns, the rows and the totals; a report whose rows are made of such a field (the open incidents'
+  status, the period's date, Change Success's class, the calendar's window) is refused rather than answered. The change
+  calendar names the freeze a change falls in only to whoever reads freezes. Open Incidents also offers Month, which it
+  already took. Tests in `tests/reports_it.rs`: `a_report_refuses_grouping_by_a_field_the_caller_cannot_read`,
+  `a_report_s_default_falls_back_to_a_readable_grouping`, `a_report_leaves_out_columns_the_caller_cannot_read`.
+
 ## 0.6.1
 
 Needs the same platform as 0.6.0. No database or interface change.

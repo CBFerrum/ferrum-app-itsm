@@ -87,7 +87,9 @@
     - {name: task_state, type: select, options: [running, paused, met, met_late, breached], no_copy: true, in_filter: true, label: Target}
     - {name: done_at, type: datetime, read_only: true, no_copy: true}
   actions:
-    - {name: complete_task, label: Done, permission: write, condition: "doc.status == 'Open'"}
+    - {name: complete_task, label: Done, permission: write, condition: "doc.status == 'Open'",
+       contract: {effect: transactional_action, returns: {type: object, properties: {status: {type: string}, request: {type: [string, "null"]}}},
+                  completion: "The task is Done, committed with this receipt. When it was its request's last, the request is Fulfilled; otherwise, the offering running its steps in order, the next step's tasks are Open"}}
   targets:
     - {name: complete, label: Completion, calendar: itsm_hours, within: "'PT' + string(doc.target_hours) + 'H'", pause_when: "doc.status == 'Waiting'", met_when: "doc.status == 'Done'", due_field: due_by, state_field: task_state}
   numbering: {template: "TASK-{YYYY}-{seq:5}"}
